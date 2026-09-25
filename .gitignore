@@ -9,3 +9,4 @@ dist-ssr
 dev-dist
 *.log
 tsconfig.tsbuildinfo
+.env*
