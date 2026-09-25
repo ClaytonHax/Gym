@@ -43,7 +43,7 @@ npm run dev
    document to its owner (`users/{uid}/**`).
 5. Copy the web app config into `.env.local`.
 
-For the deployed app, add your Vercel domain under
+For the deployed app, add `gym-zim.vercel.app` under
 **Authentication → Settings → Authorized domains**, or Google sign-in will be rejected.
 
 ### Data model
@@ -69,7 +69,8 @@ All weights are stored in **kilograms**; conversion happens only at the display 
 
 ## Deployment
 
-Deployed on Vercel from `main`. The six `VITE_FIREBASE_*` variables must be set in
+Live at **https://gym-zim.vercel.app**, deployed on Vercel from `main`.
+The six `VITE_FIREBASE_*` variables must be set in
 **Project → Settings → Environment Variables** — they're baked in at build time, so a
 redeploy is required after changing them.
 
