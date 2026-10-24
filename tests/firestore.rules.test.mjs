@@ -13,6 +13,8 @@ const env = await initializeTestEnvironment({
   // The real bot uid is substituted by scripts/setup-streak-bot.mjs; use a fixed one here.
   firestore: { rules: RULES.replaceAll('__STREAK_BOT_UID__', BOT), host: '127.0.0.1', port: 8080 },
 })
+// Start from an empty database so reruns against a long-lived emulator behave.
+await env.clearFirestore()
 
 let pass = 0
 let fail = 0
@@ -271,6 +273,82 @@ await t('placeholder rules: unauthenticated denied', () => assertFails(getDocs(c
 await t('placeholder rules: bot uid cannot create notification', () =>
   assertFails(setDoc(doc(envPh.authenticatedContext(BOT).firestore(), `users/bob/notifications/streak_risk_${BOT}_2026-10-24`), botN('streak_risk'))))
 await envPh.cleanup()
+
+
+// ---------------------------------------------------------------------------
+// Photo-verified battles
+// ---------------------------------------------------------------------------
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore()
+  await setDoc(doc(db, 'users/bob/friends/alice'), { since: Timestamp.now() })
+  await setDoc(doc(db, 'users/alice/friends/bob'), { since: Timestamp.now() })
+  const base = { creator: 'alice', members: ['alice', 'bob'], declined: [], metric: 'workouts', title: 'T',
+    startDay: '2026-10-20', endDay: '2026-10-30', createdAt: Timestamp.now(), scores: {} }
+  await setDoc(doc(db, 'challenges/photo1'), { ...base, accepted: ['alice', 'bob'], verify: 'photo' })
+  await setDoc(doc(db, 'challenges/honor1'), { ...base, accepted: ['alice', 'bob'] })
+  await setDoc(doc(db, 'challenges/photo2'), { ...base, accepted: ['alice'], verify: 'photo' })
+})
+const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3 4"><path fill="#f97316" d="M0 0h3v4h-3z"/></svg>'
+const proof = (uid, wid, extra = {}) => ({ uid, workoutId: wid, day: '2026-10-24', workoutName: 'Pull 2', value: 1,
+  svg: SVG, w: 3, h: 4, createdAt: serverTimestamp(), ...extra })
+await t('create photo battle with verify', () => assertSucceeds(addDoc(collection(A, 'challenges'), {
+  creator: 'alice', members: ['alice', 'bob'], accepted: ['alice'], declined: [], metric: 'volume', title: 'Most volume',
+  startDay: '2026-10-24', endDay: '2026-10-30', createdAt: serverTimestamp(), scores: { alice: 0 }, verify: 'photo' })))
+await t('bad verify value fails', () => assertFails(addDoc(collection(A, 'challenges'), {
+  creator: 'alice', members: ['alice', 'bob'], accepted: ['alice'], declined: [], metric: 'volume', title: 'X',
+  startDay: '2026-10-24', endDay: '2026-10-30', createdAt: serverTimestamp(), scores: { alice: 0 }, verify: 'video' })))
+await t('member cannot change verify', () => assertFails(updateDoc(doc(B, 'challenges/photo1'), { verify: 'none' })))
+await t('member posts proof', () => assertSucceeds(setDoc(doc(A, 'challenges/photo1/proofs/alice_w1'), proof('alice', 'w1', { caption: 'pb day' }))))
+await t('other member reads proofs', () => assertSucceeds(getDocs(collection(B, 'challenges/photo1/proofs'))))
+await t('own-proof query', () => assertSucceeds(getDocs(query(collection(A, 'challenges/photo1/proofs'), where('uid', '==', 'alice')))))
+await t('non-member cannot read proofs', () => assertFails(getDocs(collection(C, 'challenges/photo1/proofs'))))
+await t('non-member cannot post proof', () => assertFails(setDoc(doc(C, 'challenges/photo1/proofs/carol_w1'), proof('carol', 'w1'))))
+await t('cannot post proof as someone else', () => assertFails(setDoc(doc(B, 'challenges/photo1/proofs/alice_w2'), proof('alice', 'w2'))))
+await t('proof id must match uid_workoutId', () => assertFails(setDoc(doc(A, 'challenges/photo1/proofs/alice_zzz'), proof('alice', 'w3'))))
+await t('proof outside battle dates fails', () => assertFails(setDoc(doc(A, 'challenges/photo1/proofs/alice_w4'), proof('alice', 'w4', { day: '2026-11-02' }))))
+await t('oversized svg fails', () => assertFails(setDoc(doc(A, 'challenges/photo1/proofs/alice_w5'), proof('alice', 'w5', { svg: '<svg ' + 'x'.repeat(60001) }))))
+await t('non-svg payload fails', () => assertFails(setDoc(doc(A, 'challenges/photo1/proofs/alice_w6'), proof('alice', 'w6', { svg: '<img src=x onerror=alert(1)>' }))))
+await t('proof on honor-system battle fails', () => assertFails(setDoc(doc(A, 'challenges/honor1/proofs/alice_w1'), proof('alice', 'w1'))))
+await t('invited-but-not-joined cannot post proof', () => assertFails(setDoc(doc(B, 'challenges/photo2/proofs/bob_w1'), proof('bob', 'w1'))))
+await t('proofs cannot be edited', () => assertFails(updateDoc(doc(A, 'challenges/photo1/proofs/alice_w1'), { value: 99 })))
+await t('others cannot delete my proof', () => assertFails(deleteDoc(doc(B, 'challenges/photo1/proofs/alice_w1'))))
+await t('owner deletes own proof', () => assertSucceeds(deleteDoc(doc(A, 'challenges/photo1/proofs/alice_w1'))))
+
+// ---------------------------------------------------------------------------
+// Public plan library
+// ---------------------------------------------------------------------------
+const OWNER = 't2MZUOISXMcg4fZuoX5ZeqgTK2x2'
+const O = env.authenticatedContext(OWNER).firestore()
+const planDay = { id: 'd1', kind: 'workout', name: 'Push 1', exercises: [] }
+const plan = (author, extra = {}) => ({ authorUid: author, name: 'My split', tagline: '4-day', days: [planDay],
+  createdAt: serverTimestamp(), updatedAt: serverTimestamp(), usedBy: {}, ...extra })
+await t('owner seeds the PPL plan', () => assertSucceeds(setDoc(doc(O, 'publicPlans/ppl-8day'), plan(OWNER, { name: 'Push / Pull / Legs' }))))
+await t('nobody else can claim ppl-8day', async () => {
+  await env.withSecurityRulesDisabled((ctx) => deleteDoc(doc(ctx.firestore(), 'publicPlans/ppl-8day')))
+  await assertFails(setDoc(doc(A, 'publicPlans/ppl-8day'), plan('alice')))
+  await assertSucceeds(setDoc(doc(O, 'publicPlans/ppl-8day'), plan(OWNER)))
+})
+await t('anyone publishes a plan', () => assertSucceeds(setDoc(doc(A, 'publicPlans/alice1'), plan('alice'))))
+await t('cannot publish as someone else', () => assertFails(setDoc(doc(A, 'publicPlans/fake1'), plan('bob'))))
+await t('cannot self-star on create', () => assertFails(setDoc(doc(A, 'publicPlans/alice2'), plan('alice', { starred: true }))))
+await t('any signed-in user can browse', () => assertSucceeds(getDocs(collection(C, 'publicPlans'))))
+await t('starred query', () => assertSucceeds(getDocs(query(collection(C, 'publicPlans'), where('starred', '==', true)))))
+await t('signed-out cannot browse', () => assertFails(getDocs(collection(env.unauthenticatedContext().firestore(), 'publicPlans'))))
+await t('author edits content', () => assertSucceeds(updateDoc(doc(A, 'publicPlans/alice1'), { name: 'Renamed', updatedAt: serverTimestamp() })))
+await t('author cannot star own plan', () => assertFails(updateDoc(doc(A, 'publicPlans/alice1'), { starred: true, updatedAt: serverTimestamp() })))
+await t('author cannot change authorUid', () => assertFails(updateDoc(doc(A, 'publicPlans/alice1'), { authorUid: 'bob', updatedAt: serverTimestamp() })))
+await t('owner edits ppl', () => assertSucceeds(updateDoc(doc(O, 'publicPlans/ppl-8day'), { tagline: 'updated', updatedAt: serverTimestamp() })))
+await t('others cannot edit a plan', () => assertFails(updateDoc(doc(B, 'publicPlans/alice1'), { name: 'Hacked', updatedAt: serverTimestamp() })))
+await t('user marks usedBy self', () => assertSucceeds(updateDoc(doc(B, 'publicPlans/alice1'), { 'usedBy.bob': true })))
+await t('user cannot mark usedBy for others', () => assertFails(updateDoc(doc(B, 'publicPlans/alice1'), { 'usedBy.carol': true })))
+await t('user clears own usedBy', () => assertSucceeds(updateDoc(doc(B, 'publicPlans/alice1'), { 'usedBy.bob': deleteField() })))
+await t('starred survives author edits', async () => {
+  await env.withSecurityRulesDisabled((ctx) => updateDoc(doc(ctx.firestore(), 'publicPlans/alice1'), { starred: true, starOrder: 1 }))
+  await assertSucceeds(updateDoc(doc(A, 'publicPlans/alice1'), { name: 'Again', updatedAt: serverTimestamp() }))
+  await assertFails(updateDoc(doc(A, 'publicPlans/alice1'), { starred: false, updatedAt: serverTimestamp() }))
+})
+await t('others cannot delete a plan', () => assertFails(deleteDoc(doc(B, 'publicPlans/alice1'))))
+await t('author deletes plan', () => assertSucceeds(deleteDoc(doc(A, 'publicPlans/alice1'))))
 
 console.log(`\n${pass} passed, ${fail} failed`)
 await env.cleanup()

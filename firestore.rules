@@ -220,6 +220,69 @@ service cloud.firestore {
         && onlyAddsMe(request.resource.data.accepted, resource.data.accepted)
         && onlyAddsMe(request.resource.data.declined, resource.data.declined);
       allow delete: if signedIn() && resource.data.creator == me();
+
+      // Photo-verified battles: one proof per workout, posted by its owner,
+      // visible to every member. Proofs are never edited, only deleted.
+      match /proofs/{pid} {
+        allow read: if signedIn()
+          && me() in get(/databases/$(database)/documents/challenges/$(cid)).data.members;
+        allow create: if signedIn() && validProof(cid, pid);
+        allow delete: if signedIn() && resource.data.uid == me();
+      }
+    }
+
+    function validProof(cid, pid) {
+      let d = request.resource.data;
+      let c = get(/databases/$(database)/documents/challenges/$(cid)).data;
+      return d.keys().hasOnly(['uid', 'workoutId', 'day', 'workoutName', 'value', 'svg', 'w', 'h', 'caption', 'createdAt'])
+        && d.uid == me()
+        && me() in c.accepted
+        && c.get('verify', 'none') == 'photo'
+        && d.workoutId is string && d.workoutId.size() >= 1 && d.workoutId.size() <= 64
+        && pid == me() + '_' + d.workoutId
+        && d.day is string && d.day >= c.startDay && d.day <= c.endDay
+        && d.workoutName is string && d.workoutName.size() <= 80
+        && d.value is number
+        && d.svg is string && d.svg.size() <= 60000 && d.svg.matches('<svg .*')
+        && d.w is int && d.h is int && d.w > 0 && d.h > 0 && d.w <= 400 && d.h <= 400
+        && (!('caption' in d) || (d.caption is string && d.caption.size() <= 140))
+        && d.createdAt == request.time;
+    }
+
+    // Public plan library: anyone signed in can browse; authors edit their own.
+    // `starred`/`starOrder` (recommended plans) are set only from the Firebase
+    // console — clients can never write them.
+    match /publicPlans/{pid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validPublicPlan()
+        && request.resource.data.authorUid == me()
+        && !('starred' in request.resource.data)
+        && !('starOrder' in request.resource.data)
+        && request.resource.data.usedBy == {}
+        && request.resource.data.createdAt == request.time
+        // The built-in Push/Pull/Legs plan belongs to @ClaytonHax.
+        && (pid != 'ppl-8day' || me() == 't2MZUOISXMcg4fZuoX5ZeqgTK2x2');
+      allow update: if signedIn() && (
+        (resource.data.authorUid == me() && validPublicPlan()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description', 'tagline', 'days', 'updatedAt']))
+        // Anyone may mark (or unmark) that they use it — only their own entry.
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedBy'])
+          && request.resource.data.usedBy.diff(resource.data.usedBy).affectedKeys().hasOnly([me()])
+          && (!(me() in request.resource.data.usedBy) || request.resource.data.usedBy[me()] == true))
+      );
+      allow delete: if signedIn() && resource.data.authorUid == me();
+    }
+
+    function validPublicPlan() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['authorUid', 'name', 'description', 'tagline', 'days', 'createdAt', 'updatedAt', 'usedBy', 'starred', 'starOrder'])
+        && d.authorUid is string
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 60
+        && (!('description' in d) || (d.description is string && d.description.size() <= 500))
+        && (!('tagline' in d) || (d.tagline is string && d.tagline.size() <= 80))
+        && d.days is list && d.days.size() >= 1 && d.days.size() <= 14
+        && d.usedBy is map
+        && d.updatedAt == request.time;
     }
 
     function onlyAddsMe(next, prev) {
@@ -230,7 +293,8 @@ service cloud.firestore {
     }
     function validChallenge() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['creator', 'members', 'accepted', 'declined', 'metric', 'title', 'startDay', 'endDay', 'createdAt', 'scores'])
+      return d.keys().hasOnly(['creator', 'members', 'accepted', 'declined', 'metric', 'title', 'startDay', 'endDay', 'createdAt', 'scores', 'verify'])
+        && (!('verify' in d) || d.verify in ['none', 'photo'])
         && d.creator == me()
         && d.members is list && d.members.size() >= 2 && d.members.size() <= 5
         && d.members[0] == me()
