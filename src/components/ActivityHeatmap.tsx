@@ -7,7 +7,7 @@ import { parseDayKey } from '../lib/date'
 import { fmtVolume } from '../lib/units'
 
 const VARIANTS = {
-  // 26 weeks of 11px cells + 2px gaps fits a 375px screen.
+  // Up to 26 weeks; trimmed to whatever fits the card at runtime.
   compact: { weeks: 26, cell: 11, gap: 2 },
   full: { weeks: 53, cell: 12, gap: 3 },
 } as const
@@ -26,7 +26,7 @@ function fmtLong(key: string): string {
 function describe(cell: HeatCell): string {
   const date = fmtLong(cell.date)
   if (cell.workoutCount > 0) {
-    return `${date}: ${cell.workoutCount} ${cell.workoutCount === 1 ? 'workout' : 'workouts'}, ${cell.setCount} sets`
+    return `${date}: ${cell.workoutCount} ${cell.workoutCount === 1 ? 'workout' : 'workouts'}, ${cell.setCount} ${cell.setCount === 1 ? 'set' : 'sets'}`
   }
   if (cell.isRest) return `${date}: planned rest day`
   if (cell.isFuture) return `${date}: upcoming`
@@ -45,14 +45,28 @@ export function ActivityHeatmap({
   variant?: 'compact' | 'full'
   className?: string
 }) {
-  const { weeks, cell, gap } = VARIANTS[variant]
+  const { weeks: maxWeeks, cell, gap } = VARIANTS[variant]
+  const scroller = useRef<HTMLDivElement>(null)
+  // Compact trims to however many whole weeks fit, so no column is ever half-cut
+  // (a clipped first column also clipped its month label).
+  const [fitWeeks, setFitWeeks] = useState<number>(maxWeeks)
+  useEffect(() => {
+    const el = scroller.current
+    if (variant !== 'compact' || !el) return
+    const measure = () =>
+      setFitWeeks(Math.max(8, Math.min(maxWeeks, Math.floor((el.clientWidth + gap) / (cell + gap)))))
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [variant, maxWeeks, cell, gap])
+  const weeks = variant === 'compact' ? fitWeeks : maxWeeks
   const data = useMemo(
     () => buildHeatmap(workouts, weeks, { isRestDay }),
     [workouts, weeks, isRestDay]
   )
   const { profile } = useSettings()
   const [selected, setSelected] = useState<HeatCell | null>(null)
-  const scroller = useRef<HTMLDivElement>(null)
 
   // Land on the latest week; older history is a swipe away.
   useEffect(() => {
@@ -173,7 +187,7 @@ export function ActivityHeatmap({
                 </li>
               ))}
               <li className="tabular pt-1 text-sm text-[var(--color-fg-muted)]">
-                {selected.setCount} sets · {fmtVolume(selected.volumeKg, profile.unit)}
+                {selected.setCount} {selected.setCount === 1 ? 'set' : 'sets'} · {fmtVolume(selected.volumeKg, profile.unit)}
               </li>
             </ul>
           ) : (

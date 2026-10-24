@@ -341,7 +341,7 @@ export function WorkoutActive() {
           )}
           <p className="tabular mt-0.5 flex items-center gap-1.5 text-sm text-[var(--color-fg-muted)]">
             <span className="size-2 animate-pulse rounded-full bg-go-500" />
-            {fmtDuration(elapsed)} · {setsDone} sets · {fmtVolume(volume, unit)}
+            {fmtDuration(elapsed)} · {setsDone} {setsDone === 1 ? 'set' : 'sets'} · {fmtVolume(volume, unit)}
           </p>
           {active.planDayName && active.planDayIndex !== undefined ? (
             <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">
@@ -403,7 +403,7 @@ export function WorkoutActive() {
                 <div className="mb-2.5 flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate text-base font-semibold">{ex.name}</h2>
+                      <h2 className="line-clamp-2 text-base font-semibold leading-tight">{ex.name}</h2>
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
                       {ex.supersetId ? <Badge color="#8b5cf6">Superset</Badge> : null}
                     </div>

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import {
   forwardRef,
   useEffect,
@@ -434,7 +435,9 @@ export function Sheet({
 
   if (!open) return null
 
-  return (
+  // Portal to <body>: an animated/transformed ancestor would otherwise become the
+  // containing block for `position: fixed` and push the sheet off-screen.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
       <div
         className="animate-fade absolute inset-0 bg-ink-950/70 backdrop-blur-sm"
@@ -465,7 +468,8 @@ export function Sheet({
           <div className="safe-bottom border-t border-[var(--color-line)] p-4">{footer}</div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -474,6 +478,7 @@ export function ConfirmSheet({
   title,
   message,
   confirmLabel = 'Delete',
+  tone = 'danger',
   onConfirm,
   onCancel,
 }: {
@@ -481,6 +486,8 @@ export function ConfirmSheet({
   title: string
   message: string
   confirmLabel?: string
+  /** 'primary' for reversible actions (delay, skip) that shouldn't look destructive. */
+  tone?: 'danger' | 'primary'
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -494,7 +501,7 @@ export function ConfirmSheet({
           <Button variant="secondary" full onClick={onCancel}>
             Cancel
           </Button>
-          <Button variant="danger" full onClick={onConfirm}>
+          <Button variant={tone} full onClick={onConfirm}>
             {confirmLabel}
           </Button>
         </div>

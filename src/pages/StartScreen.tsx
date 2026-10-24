@@ -115,7 +115,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-wide">Train</h1>
         <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-          Follow today\u2019s plan, run your own routine, or start from scratch.
+          Follow today’s plan, run your own routine, or start from scratch.
         </p>
       </header>
 

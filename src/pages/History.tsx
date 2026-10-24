@@ -146,8 +146,8 @@ export function History() {
                                 <p className="truncate font-semibold">{w.name}</p>
                                 {w.planDayName ? (
                                   <Badge color="#F97316" className="mt-1">
-                                    {w.planDayName}
-                                    {w.planCycle ? ` · C${w.planCycle}` : ''}
+                                    {w.planDayName === w.name ? 'Plan' : w.planDayName}
+                                    {w.planCycle ? ` · Cycle ${w.planCycle}` : ''}
                                   </Badge>
                                 ) : null}
                                 <p className="tabular text-xs text-[var(--color-fg-muted)]">
@@ -179,7 +179,7 @@ export function History() {
                                 <span className="font-semibold text-brand-400">
                                   {fmtVolume(w.totalVolumeKg, profile.unit)}
                                 </span>{' '}
-                                · {w.setCount} sets
+                                · {w.setCount} {w.setCount === 1 ? 'set' : 'sets'}
                               </p>
                             </div>
                           </Link>

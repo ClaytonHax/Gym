@@ -346,10 +346,10 @@ export function Dashboard() {
               Choose a plan and the app tells you what to train every day, rest days included.
             </p>
             <div className="mt-4 flex gap-2">
-              <Button size="lg" icon="layers" onClick={() => navigate('/plans')} className="flex-1">
+              <Button size="lg" icon="layers" onClick={() => navigate('/plans')} className="flex-1 whitespace-nowrap">
                 Browse plans
               </Button>
-              <Button variant="secondary" size="lg" onClick={() => navigate('/workout')}>
+              <Button variant="secondary" size="lg" onClick={() => navigate('/workout')} className="whitespace-nowrap">
                 Quick start
               </Button>
             </div>
@@ -423,6 +423,7 @@ export function Dashboard() {
             : "Today becomes a rest day and today's workout is dropped. The rest of the schedule stays where it is."
         }
         confirmLabel={confirm === 'delay' ? 'Delay a day' : 'Skip today'}
+        tone="primary"
         onConfirm={confirmAdjust}
         onCancel={() => setConfirm(null)}
       />
@@ -456,7 +457,7 @@ export function Dashboard() {
               unit={unit}
               icon="layers"
               accent="go"
-              delta={`${weekSets} sets logged`}
+              delta={`${weekSets} ${weekSets === 1 ? 'set' : 'sets'} logged`}
             />
             <StatTile
               label="Body weight"
@@ -582,7 +583,7 @@ export function Dashboard() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{w.name}</span>
                     <span className="tabular block text-xs text-[var(--color-fg-muted)]">
-                      {relativeDay(w.startedAt)} · {fmtDuration(w.durationSec)} · {w.setCount} sets
+                      {relativeDay(w.startedAt)} · {fmtDuration(w.durationSec)} · {w.setCount} {w.setCount === 1 ? 'set' : 'sets'}
                     </span>
                   </span>
                   <span className="tabular shrink-0 text-right">

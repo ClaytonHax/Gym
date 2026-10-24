@@ -339,6 +339,7 @@ export function Plans() {
         title={confirm?.title ?? ''}
         message={confirm?.message ?? ''}
         confirmLabel={confirm?.label}
+        tone={confirm?.label === 'Delay' || confirm?.label === 'Skip' ? 'primary' : 'danger'}
         onCancel={() => setPending(null)}
         onConfirm={() => void confirm?.go()}
       />

@@ -74,7 +74,7 @@ export function SetRow({
 
   return (
     <li
-      className={`flex items-center gap-2 rounded-xl border px-2 py-2 transition-colors duration-200
+      className={`flex items-center gap-1.5 rounded-xl border px-1.5 py-1.5 transition-colors duration-200
         ${
           set.done
             ? 'border-go-500/40 bg-go-500/10'
@@ -86,7 +86,7 @@ export function SetRow({
         onClick={() => onChange({ warmup: !set.warmup })}
         aria-label={set.warmup ? `Set ${index + 1}, warm-up — make working set` : `Set ${index + 1} — mark as warm-up`}
         title={set.warmup ? 'Warm-up set (excluded from volume)' : 'Working set'}
-        className={`tabular grid size-8 shrink-0 place-items-center rounded-lg text-xs font-bold
+        className={`touch-auto tabular grid size-8 shrink-0 place-items-center rounded-lg text-xs font-bold
           transition-colors duration-200 ${
             set.warmup
               ? 'bg-amber-500/20 text-amber-400'
@@ -96,13 +96,14 @@ export function SetRow({
         {set.warmup ? 'W' : index + 1}
       </button>
 
+      {/* Nudge buttons only on wider screens — at phone width they squeeze the weight field to nothing. */}
       {tracksWeight ? (
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <button
             type="button"
             onClick={() => nudge(-step(unit))}
             aria-label="Decrease weight"
-            className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--color-fg-muted)] transition-colors duration-200 hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
+            className="hidden size-9 shrink-0 place-items-center rounded-lg text-[var(--color-fg-muted)] transition-colors duration-200 hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)] sm:grid"
           >
             <Icon name="minus" size={16} />
           </button>
@@ -121,7 +122,7 @@ export function SetRow({
             type="button"
             onClick={() => nudge(step(unit))}
             aria-label="Increase weight"
-            className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--color-fg-muted)] transition-colors duration-200 hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]"
+            className="hidden size-9 shrink-0 place-items-center rounded-lg text-[var(--color-fg-muted)] transition-colors duration-200 hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)] sm:grid"
           >
             <Icon name="plus" size={16} />
           </button>
@@ -140,14 +141,14 @@ export function SetRow({
         onChange={(e) => commitReps(e.target.value)}
         aria-label={`Set ${index + 1} reps`}
         placeholder={targetReps ?? (placeholder ? String(placeholder.reps) : '0')}
-        className="tabular min-h-10 w-16 shrink-0 rounded-lg border border-transparent bg-[var(--color-surface)] px-1 text-center font-semibold text-[var(--color-fg)] outline-none focus:border-brand-500"
+        className="tabular min-h-10 w-14 shrink-0 rounded-lg border border-transparent bg-[var(--color-surface)] px-1 text-center font-semibold text-[var(--color-fg)] outline-none focus:border-brand-500"
       />
       <button
         type="button"
         onClick={() => onChange({ rpe: nextRpe(set.rpe) })}
         aria-label={set.rpe ? `Set ${index + 1} RPE ${set.rpe}, tap to change` : `Set ${index + 1}: add RPE`}
         title="Rate of perceived exertion"
-        className={`tabular grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[10px] font-bold uppercase
+        className={`tabular grid h-10 w-9 shrink-0 place-items-center rounded-lg text-[10px] font-bold uppercase
           tracking-wider transition-colors duration-200 ${
             set.rpe
               ? 'bg-violet-500/20 text-violet-300'
@@ -177,7 +178,7 @@ export function SetRow({
         type="button"
         onClick={onRemove}
         aria-label={`Remove set ${index + 1}`}
-        className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--color-fg-muted)] transition-colors duration-200 hover:bg-rose-500/15 hover:text-rose-400"
+        className="grid h-10 w-8 shrink-0 place-items-center rounded-lg text-[var(--color-fg-muted)] transition-colors duration-200 hover:bg-rose-500/15 hover:text-rose-400"
       >
         <Icon name="x" size={16} />
       </button>
