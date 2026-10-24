@@ -111,6 +111,26 @@ Generate a new pair with `npx web-push generate-vapid-keys` (then update both pl
 The push text uses the sender's *current* username, looked up by uid from `profiles/{uid}`
 (falling back to the name stored on the notification).
 
+### Streak reminders (free)
+
+A daily Vercel Cron ([`api/streak-check.js`](./api/streak-check.js), 16:00 UTC) warns people whose
+streak is about to end (or just ended) and pings their friends ("nudge them?"). It has no admin
+credentials: it signs in as a dedicated **streak bot** Firebase user and reads only the small
+`streakWatch/{uid}` doc each client keeps (timezone, streak, planned rest days, week counts), plus
+friends lists and push subscriptions, all gated by `firestore.rules` (`isBot()`). The in-app
+Dashboard card and the Friends highlight work without any of this.
+
+One-time setup:
+
+1. `node scripts/setup-streak-bot.mjs` (add `--apply-vercel` to also run `vercel env add`). It creates
+   `streak-bot@clayton-gym.app`, writes its uid into `firestore.rules` and prints the env commands
+   for `BOT_EMAIL`, `BOT_PASSWORD` and `CRON_SECRET` (production and preview).
+2. `firebase deploy --only firestore:rules`
+3. Make sure `VITE_FIREBASE_API_KEY` and the VAPID keys are set in Vercel, then deploy (push to `main`).
+4. Test: `curl -H "Authorization: Bearer $CRON_SECRET" https://clayton-gym.vercel.app/api/streak-check`
+
+Until step 1 the rules contain the placeholder `__STREAK_BOT_UID__`, which matches nobody.
+
 All weights are stored in **kilograms**; conversion happens only at the display edge.
 
 ## Scripts

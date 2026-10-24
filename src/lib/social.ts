@@ -33,6 +33,9 @@ export interface PublicStats {
   lastWorkoutAt: string | null
   prCount: number
   topLifts: Array<{ name: string; e1rmKg: number }>
+  /** Owner-computed at last sync: streak ends today unless they train. Trust only if atRiskDay is the viewer's today. */
+  atRisk?: boolean
+  atRiskDay?: string
 }
 
 export type Reaction = 'fire' | 'strong' | 'beast'
@@ -61,6 +64,9 @@ export type NotificationType =
   | 'workout'
   | 'challenge_invite'
   | 'challenge_join'
+  | 'streak_risk'
+  | 'streak_lost'
+  | 'friend_streak'
 
 export interface AppNotification {
   id: string
@@ -439,6 +445,12 @@ export function describeNotification(
       return { title: `${who} challenged you`, body: n.text, to: '/friends?tab=challenges' }
     case 'challenge_join':
       return { title: `${who} accepted your challenge`, body: n.text, to: '/friends?tab=challenges' }
+    case 'streak_risk':
+      return { title: n.text || 'Your streak is on the line', to: '/' }
+    case 'streak_lost':
+      return { title: n.text || 'Your streak ended. Start a new one today.', to: '/' }
+    case 'friend_streak':
+      return { title: n.text || `${who}’s streak is at risk`, to: n.ref ? `/friends/${n.ref}` : '/friends' }
   }
 }
 
@@ -448,4 +460,16 @@ export function toIso(v: unknown): string {
   if (typeof v === 'string') return v
   const t = v as { toDate?: () => Date }
   return t.toDate ? t.toDate().toISOString() : new Date().toISOString()
+}
+
+/**
+ * Is this friend's streak ending today? Based on their last sync, so it is only
+ * trusted when it was computed today and they haven't trained since (by their
+ * latest workout). Hidden before noon so mornings aren't nagging.
+ */
+export function friendAtRisk(s: PublicStats | undefined): boolean {
+  if (!s?.atRisk || s.atRiskDay !== dayKey()) return false
+  if (new Date().getHours() < 12) return false
+  if (s.lastWorkoutAt && dayKey(new Date(s.lastWorkoutAt)) === dayKey()) return false
+  return liveStreak(s) >= 2
 }

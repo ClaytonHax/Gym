@@ -20,6 +20,8 @@ const PREFS: Array<{ type: NotificationType; label: string; description: string 
   { type: 'friend_request', label: 'Friend requests', description: 'New requests and accepts.' },
   { type: 'workout', label: 'Friends’ workouts', description: 'When a friend finishes a session.' },
   { type: 'kudos', label: 'Reactions', description: 'When friends react to your workouts.' },
+  { type: 'streak_risk', label: 'Streak reminders', description: 'When your streak is about to end, or just did.' },
+  { type: 'friend_streak', label: 'Friends’ streaks', description: 'When a friend’s streak is about to end.' },
   { type: 'challenge_invite', label: 'Challenges', description: 'Invites and friends joining yours.' },
 ]
 
@@ -141,6 +143,7 @@ export function NotificationPrefs() {
     // Challenge invites and joins share one switch, as do requests and accepts.
     if (type === 'challenge_invite') next.challenge_join = on
     if (type === 'friend_request') next.friend_accept = on
+    if (type === 'streak_risk') next.streak_lost = on
     try {
       await savePushPrefs(user.uid, next)
     } catch {

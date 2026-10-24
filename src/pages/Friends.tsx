@@ -37,6 +37,7 @@ import {
   daysSince,
   lastTrainedLabel,
   liveStreak,
+  friendAtRisk,
   METRICS,
   metricValue,
   type BoardMetric,
@@ -309,6 +310,7 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
               const { name, handle } = displayOf(f.profile)
               const idle = (daysSince(f.stats?.lastWorkoutAt) ?? 99) >= 2
               const streak = liveStreak(f.stats)
+              const risk = friendAtRisk(f.stats)
               return (
                 <li key={f.uid} className="flex items-center gap-1">
                   <Link
@@ -321,6 +323,11 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
                       <span className="block truncate text-xs text-[var(--color-fg-muted)]">
                         {handle} · {lastTrainedLabel(f.stats?.lastWorkoutAt)}
                       </span>
+                      {risk ? (
+                        <span className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-brand-400">
+                          <Icon name="flame" size={12} /> Streak ends tonight
+                        </span>
+                      ) : null}
                     </span>
                     {streak > 0 ? (
                       <StreakBadge count={streak} unit={f.stats?.streak.unit ?? 'day'} size="sm" />
@@ -331,7 +338,7 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
                       icon="hand"
                       label={`Nudge @${f.profile.username}`}
                       onClick={() => onNudge(f.profile!)}
-                      className={idle ? 'text-brand-400' : ''}
+                      className={idle || risk ? 'text-brand-400' : ''}
                     />
                   ) : null}
                 </li>

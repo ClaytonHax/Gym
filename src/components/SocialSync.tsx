@@ -10,6 +10,7 @@ import { computeStreaks } from '../lib/streaks'
 import { addDays, dayKey } from '../lib/date'
 import { activityFor, buildPublicStats, challengeScore } from '../lib/social'
 import { fmtVolume } from '../lib/units'
+import { buildStreakWatch, evaluateWatch, localNow } from '../lib/streakWatch'
 
 /** Activity older than this is pruned from friends' feeds. */
 const FEED_DAYS = 30
@@ -21,15 +22,28 @@ export function useMyPublicStats() {
   const { profile } = useSettings()
   const { workouts, loading } = useWorkouts()
   const { isRestDay, activeState, loading: plansLoading } = usePlans()
-  const stats = useMemo(() => {
+  const computed = useMemo(() => {
     const streaks = computeStreaks(workouts, {
       isRestDay,
       planStartDate: activeState?.startDate,
       weeklyGoal: profile.weeklyGoal,
     })
-    return buildPublicStats(workouts, streaks, profile.weeklyGoal)
+    const watch = buildStreakWatch(workouts, streaks, { isRestDay, weeklyGoal: profile.weeklyGoal })
+    const risk = evaluateWatch(watch, localNow(), 0)
+    const base = buildPublicStats(workouts, streaks, profile.weeklyGoal)
+    return {
+      stats: {
+        ...base,
+        atRisk: risk.status === 'risk',
+        atRiskDay: risk.status === 'risk' ? watch.asOfDay : '',
+      },
+      watch,
+      // In-app cards wait until midday so they don't nag at breakfast.
+      status: evaluateWatch(watch, localNow(), 12),
+      streaks,
+    }
   }, [workouts, isRestDay, activeState?.startDate, profile.weeklyGoal])
-  return { stats, workouts, ready: !loading && !plansLoading }
+  return { stats: computed.stats, watch: computed.watch, status: computed.status, streaks: computed.streaks, workouts, ready: !loading && !plansLoading }
 }
 
 /**
@@ -40,7 +54,7 @@ export function SocialSync() {
   const { user } = useAuth()
   const { profile } = useSettings()
   const { me, challenges, notifyFriends } = useSocial()
-  const { stats, workouts, ready } = useMyPublicStats()
+  const { stats, watch, workouts, ready } = useMyPublicStats()
   const uid = user?.uid
   const lastStats = useRef<string>('')
   const activityIds = useRef<Map<string, string> | null>(null)
@@ -60,6 +74,24 @@ export function SocialSync() {
     }, 1500)
     return () => window.clearTimeout(t)
   }, [uid, ready, me, stats])
+
+  // Streak watch: the few facts the daily server check needs. Debounced, only
+  // written when something other than the timestamp changed.
+  const lastWatch = useRef<string>('')
+  useEffect(() => {
+    if (!uid || !ready || !me) return
+    const { updatedAt: _u, ...comparable } = watch
+    const hash = JSON.stringify(comparable)
+    if (hash === lastWatch.current) return
+    const t = window.setTimeout(() => {
+      setDoc(doc(db, 'streakWatch', uid), watch)
+        .then(() => {
+          lastWatch.current = hash
+        })
+        .catch((err) => console.warn('streak watch sync failed', err))
+    }, 2500)
+    return () => window.clearTimeout(t)
+  }, [uid, ready, me, watch])
 
   // Track which activity docs exist (and a fingerprint of each) to diff against.
   useEffect(() => {

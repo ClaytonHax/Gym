@@ -16,6 +16,7 @@ import {
 } from '../components/ui'
 import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { FriendsPulse } from '../components/FriendsPulse'
+import { StreakAlert } from '../components/StreakAlert'
 import { NotificationBell } from '../components/social'
 import { BodyWeightChart } from '../components/LazyCharts'
 import { useAuth } from '../contexts/AuthContext'
@@ -430,6 +431,8 @@ export function Dashboard() {
         onConfirm={confirmAdjust}
         onCancel={() => setConfirm(null)}
       />
+
+      {!loading ? <StreakAlert /> : null}
 
       {loading ? <Skeleton className="h-[140px]" /> : <StreakCard stats={streakStats} />}
 

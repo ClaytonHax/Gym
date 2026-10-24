@@ -6,7 +6,7 @@ import { Avatar, displayOf, NudgeSheet } from './social'
 import { useMyPublicStats } from './SocialSync'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocial } from '../contexts/SocialContext'
-import { challengeState, daysSince, metricValue, type PublicProfile } from '../lib/social'
+import { challengeState, daysSince, friendAtRisk, liveStreak, metricValue, type PublicProfile } from '../lib/social'
 
 /** Home-screen slice of the friends system: this week's race + who needs a nudge. */
 export function FriendsPulse() {
@@ -48,6 +48,7 @@ export function FriendsPulse() {
   }
 
   const myRank = ranked.findIndex((r) => r.isMe) + 1
+  const atRisk = friends.find((f) => f.profile && friendAtRisk(f.stats))
   const idle = friends.find((f) => (daysSince(f.stats?.lastWorkoutAt) ?? 99) >= 3 && f.profile)
   const live = challenges.filter((c) => c.accepted.includes(uid) && challengeState(c) === 'active').length
 
@@ -76,9 +77,23 @@ export function FriendsPulse() {
           )
         })}
       </ol>
-      {idle?.profile || live > 0 ? (
+      {atRisk?.profile || idle?.profile || live > 0 ? (
         <div className="mt-3 flex items-center gap-3 border-t border-[var(--color-line)] pt-3">
-          {idle?.profile ? (
+          {atRisk?.profile ? (
+            <>
+              <Icon name="flame" size={18} className="shrink-0 text-brand-400" />
+              <p className="min-w-0 flex-1 text-sm text-[var(--color-fg-muted)]">
+                <span className="font-semibold text-[var(--color-fg)]">@{atRisk.profile.username}</span>’s{' '}
+                {liveStreak(atRisk.stats)}-{atRisk.stats?.streak.unit ?? 'day'} streak ends tonight.
+              </p>
+              <IconButton
+                icon="hand"
+                label={`Nudge @${atRisk.profile.username}`}
+                variant="secondary"
+                onClick={() => setNudging(atRisk.profile!)}
+              />
+            </>
+          ) : idle?.profile ? (
             <>
               <p className="min-w-0 flex-1 text-sm text-[var(--color-fg-muted)]">
                 <span className="font-semibold text-[var(--color-fg)]">@{idle.profile.username}</span> hasn’t trained in{' '}

@@ -16,6 +16,9 @@ const TYPE_ICON: Record<NotificationType, { icon: IconName; tone: string }> = {
   workout: { icon: 'dumbbell', tone: 'bg-violet-400 text-ink-950' },
   challenge_invite: { icon: 'swords', tone: 'bg-amber-400 text-ink-950' },
   challenge_join: { icon: 'swords', tone: 'bg-go-500 text-ink-950' },
+  streak_risk: { icon: 'flame', tone: 'bg-brand-500 text-ink-950' },
+  streak_lost: { icon: 'flame', tone: 'bg-rest text-ink-950' },
+  friend_streak: { icon: 'flame', tone: 'bg-brand-500 text-ink-950' },
 }
 
 function Row({
@@ -39,7 +42,7 @@ function Row({
       }`}
     >
       <span className="relative shrink-0">
-        <Avatar uid={n.from} name={username || n.fromUsername} size={44} />
+        <Avatar uid={n.type === 'friend_streak' && n.ref ? n.ref : n.from} name={username || n.fromUsername} size={44} />
         <span className={`absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full ring-2 ring-[var(--color-surface)] ${t.tone}`}>
           <Icon name={t.icon} size={13} />
         </span>
