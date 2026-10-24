@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
-import { Badge, Button, EmptyState, PageTitle, Skeleton } from '../components/ui'
+import { Badge, Button, EmptyState, PageTitle, Skeleton, StreakBadge } from '../components/ui'
 import { useSettings } from '../contexts/SettingsContext'
 import { useWorkouts } from '../hooks/useWorkouts'
+import { usePlans } from '../hooks/usePlans'
+import { ActivityHeatmap } from '../components/ActivityHeatmap'
+import { computeStreaks } from '../lib/streaks'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { fmtDuration, fmtTime, relativeDay } from '../lib/date'
 import { fmtVolume } from '../lib/units'
@@ -28,6 +31,7 @@ export function History() {
   const { workouts, loading } = useWorkouts()
   const { profile } = useSettings()
   const navigate = useNavigate()
+  const { isRestDay, activeState } = usePlans()
   const [search, setSearch] = useState('')
 
   const filtered = useMemo(() => {
@@ -41,6 +45,16 @@ export function History() {
   }, [workouts, search])
 
   const grouped = useMemo(() => groupByMonth(filtered), [filtered])
+
+  const streaks = useMemo(
+    () =>
+      computeStreaks(workouts, {
+        isRestDay,
+        planStartDate: activeState?.startDate,
+        weeklyGoal: profile.weeklyGoal,
+      }),
+    [workouts, isRestDay, activeState?.startDate, profile.weeklyGoal]
+  )
 
   const totalVolume = workouts.reduce((s, w) => s + w.totalVolumeKg, 0)
   const totalTime = workouts.reduce((s, w) => s + w.durationSec, 0)
@@ -75,6 +89,22 @@ export function History() {
         />
       ) : (
         <>
+          <section aria-label="Activity" className="card mb-5 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <StreakBadge
+                count={streaks.current}
+                unit={streaks.mode === 'plan' ? 'day' : 'week'}
+                active={streaks.current > 0}
+                size="sm"
+              />
+              <p className="tabular text-xs text-[var(--color-fg-muted)]">
+                Longest {streaks.longest} {streaks.mode === 'plan' ? 'day' : 'week'}
+                {streaks.longest === 1 ? '' : 's'}
+              </p>
+            </div>
+            <ActivityHeatmap workouts={workouts} isRestDay={isRestDay} variant="compact" />
+          </section>
+
           <div className="relative mb-5">
             <Icon
               name="search"
@@ -114,6 +144,12 @@ export function History() {
                             <div className="flex items-start gap-3">
                               <div className="min-w-0 flex-1">
                                 <p className="truncate font-semibold">{w.name}</p>
+                                {w.planDayName ? (
+                                  <Badge color="#F97316" className="mt-1">
+                                    {w.planDayName}
+                                    {w.planCycle ? ` · C${w.planCycle}` : ''}
+                                  </Badge>
+                                ) : null}
                                 <p className="tabular text-xs text-[var(--color-fg-muted)]">
                                   {relativeDay(w.startedAt)} · {fmtTime(w.startedAt)} ·{' '}
                                   {fmtDuration(w.durationSec)}

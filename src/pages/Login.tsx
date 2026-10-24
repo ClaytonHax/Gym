@@ -68,7 +68,7 @@ export function Login() {
 
       <div className="animate-rise relative mx-auto w-full max-w-sm">
         <div className="mb-8 text-center">
-          <span className="mx-auto mb-4 grid size-16 place-items-center rounded-2xl bg-brand-500 text-white shadow-xl shadow-brand-500/30">
+          <span className="mx-auto mb-4 grid size-16 place-items-center rounded-2xl bg-brand-500 text-ink-950 shadow-xl shadow-brand-500/30">
             <Icon name="dumbbell" size={32} />
           </span>
           <h1 className="font-display text-4xl font-bold tracking-wide">Gym Tracker</h1>

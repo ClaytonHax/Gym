@@ -191,7 +191,7 @@ export function ExercisePicker({
                 className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold
                   uppercase tracking-wider transition-colors duration-200 ${
                     muscle === m
-                      ? 'border-brand-500 bg-brand-500 text-white'
+                      ? 'border-brand-500 bg-brand-500 text-ink-950'
                       : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
                   }`}
               >
@@ -227,7 +227,7 @@ export function ExercisePicker({
                     >
                       <span
                         className={`grid size-6 shrink-0 place-items-center rounded-md border-2
-                          ${isSelected ? 'border-brand-500 bg-brand-500 text-white' : 'border-[var(--color-line)]'}`}
+                          ${isSelected ? 'border-brand-500 bg-brand-500 text-ink-950' : 'border-[var(--color-line)]'}`}
                       >
                         {isSelected ? <Icon name="check" size={14} /> : null}
                       </span>

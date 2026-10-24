@@ -44,6 +44,13 @@ export type IconName =
   | 'calculator'
   | 'link'
   | 'bookmark'
+  | 'moon'
+  | 'skip-forward'
+  | 'pencil'
+  | 'star'
+  | 'grip'
+  | 'arrow-right'
+  | 'check-circle'
 
 const PATHS: Record<IconName, string> = {
   dumbbell: 'M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11',
@@ -94,6 +101,13 @@ const PATHS: Record<IconName, string> = {
     'M6 3h12a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01',
   link: 'M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5',
   bookmark: 'M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z',
+  moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+  'skip-forward': 'M5 4l10 8-10 8zM19 5v14',
+  pencil: 'M17 3l4 4L7.5 20.5 3 21l.5-4.5zM15 5l4 4',
+  star: 'M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
+  'arrow-right': 'M4 12h16M13 5l7 7-7 7',
+  'check-circle': 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l3 3 5-6',
 }
 
 const FILLED: IconName[] = ['play', 'google']

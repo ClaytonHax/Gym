@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import {
@@ -22,7 +22,7 @@ import { useRoutines } from '../hooks/useRoutines'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { fmtClock, fmtDuration } from '../lib/date'
-import { fmtVolume, fmtWeight } from '../lib/units'
+import { fmtVolume, fmtWeight, step } from '../lib/units'
 import { completedSetCount, estimate1rm, lastPerformance, personalRecords, volumeOf } from '../lib/stats'
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types'
 
@@ -43,6 +43,20 @@ function toWorkoutExercise(ex: Exercise): WorkoutExercise {
 /** Firestore rejects `undefined` fields, so cleared optionals must be dropped, not set. */
 function dropUndefined<T extends object>(obj: T): T {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T
+}
+
+/** Top of a rep target like "10-15" or "12"; null for "failure" or blank. */
+function topOfRange(target?: string): number | null {
+  const nums = target?.match(/\d+/g)
+  return nums ? Number(nums[nums.length - 1]) : null
+}
+
+/** True when every working set last time reached the top of its target range. */
+function hitTopOfRange(ex: WorkoutExercise, last: Array<{ reps: number }>): boolean {
+  if (!ex.tracksWeight || last.length === 0) return false
+  const targets = ex.sets.filter((s) => !s.warmup).map((s) => topOfRange(s.targetReps))
+  if (targets.length === 0 || targets.some((t) => t === null)) return false
+  return last.every((s, i) => s.reps >= (targets[Math.min(i, targets.length - 1)] as number))
 }
 
 function defaultName(): string {
@@ -161,7 +175,7 @@ export function WorkoutActive() {
     // Live PR check against history — a first-ever session has nothing to beat.
     const prior = records.get(ex.exerciseId)
     if (ex.tracksWeight && prior && estimate1rm(set.weightKg, set.reps) > prior + 0.01) {
-      toast(`New PR on ${ex.name}! 🏆`)
+      toast(`New PR on ${ex.name}!`)
     }
 
     // Superset partners go back-to-back; rest only after the last exercise in the group.
@@ -254,6 +268,13 @@ export function WorkoutActive() {
         durationSec: Math.round((Date.now() - new Date(active.startedAt).getTime()) / 1000),
         exercises,
         ...(active.notes ? { notes: active.notes } : {}),
+        ...dropUndefined({
+          planId: active.planId,
+          planName: active.planName,
+          planDayIndex: active.planDayIndex,
+          planDayName: active.planDayName,
+          planCycle: active.planCycle,
+        }),
       })
       if (saveAsRoutine) {
         await saveRoutine({
@@ -322,6 +343,12 @@ export function WorkoutActive() {
             <span className="size-2 animate-pulse rounded-full bg-go-500" />
             {fmtDuration(elapsed)} · {setsDone} sets · {fmtVolume(volume, unit)}
           </p>
+          {active.planDayName && active.planDayIndex !== undefined ? (
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">
+              Day {active.planDayIndex + 1}
+              {active.planCycle ? ` · Cycle ${active.planCycle}` : ''}
+            </p>
+          ) : null}
         </div>
         <IconButton icon="note" label="Workout notes" onClick={() => setNotesOpen(true)} />
         <IconButton
@@ -366,6 +393,7 @@ export function WorkoutActive() {
         <ul className="flex flex-col gap-3">
           {active.exercises.map((ex, exIndex) => {
             const last = lastPerformance(workouts, ex.exerciseId)
+            const overload = last ? hitTopOfRange(ex, last.sets) : false
             return (
               <Card
                 as="li"
@@ -398,6 +426,12 @@ export function WorkoutActive() {
                     ) : (
                       <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">First time — set a baseline</p>
                     )}
+                    {overload ? (
+                      <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-go-500/15 px-1.5 py-0.5 text-xs font-bold text-go-400">
+                        <Icon name="trending" size={13} />
+                        Top of the range. Try +{step(unit)} {unit}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex shrink-0">
                     {last ? (
@@ -435,8 +469,8 @@ export function WorkoutActive() {
 
                 <ul className="flex flex-col gap-1.5">
                   {ex.sets.map((set, setIndex) => (
+                    <Fragment key={setIndex}>
                     <SetRow
-                      key={setIndex}
                       index={setIndex}
                       set={set}
                       tracksWeight={ex.tracksWeight}
@@ -458,6 +492,13 @@ export function WorkoutActive() {
                         }))
                       }
                     />
+                  {last?.sets[setIndex] && !set.warmup ? (
+                      <li className="tabular -mt-0.5 pl-9 text-[11px] text-[var(--color-fg-muted)]">
+                        Last: {ex.tracksWeight ? `${fmtWeight(last.sets[setIndex].weightKg, unit, false)} × ` : ''}
+                        {last.sets[setIndex].reps}
+                      </li>
+                    ) : null}
+                    </Fragment>
                   ))}
                 </ul>
 

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import {
   forwardRef,
   useEffect,
@@ -19,8 +20,9 @@ type Size = 'sm' | 'md' | 'lg'
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-brand-500 text-white hover:bg-brand-600 active:bg-brand-700 shadow-lg shadow-brand-500/20',
-  go: 'bg-go-500 text-ink-950 hover:bg-go-400 active:bg-go-600 shadow-lg shadow-go-500/20',
+    // Dark label on orange: white on #F97316 is only 2.8:1, ink-950 is ~7:1.
+    'bg-brand-500 text-ink-950 hover:bg-brand-400 active:bg-brand-600 shadow-lg shadow-brand-500/25',
+  go: 'bg-go-500 text-ink-950 hover:bg-go-400 active:bg-go-600 shadow-lg shadow-go-500/25',
   secondary:
     'bg-[var(--color-surface-2)] text-[var(--color-fg)] border border-[var(--color-line)] hover:border-brand-500/60 hover:text-brand-400',
   ghost: 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]',
@@ -62,8 +64,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       // Disabling during async work stops double-submits on flaky gym wifi.
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={`inline-flex items-center justify-center rounded-xl font-semibold tracking-wide
-        transition-colors duration-200 disabled:opacity-50
+      className={`inline-flex items-center justify-center rounded-xl font-bold tracking-wide
+        transition-[color,background-color,border-color,transform] duration-150 disabled:opacity-50
         ${VARIANTS[variant]} ${SIZES[size]} ${full ? 'w-full' : ''} ${className}`}
       {...rest}
     >
@@ -126,7 +128,10 @@ export function SectionHeader({
 }) {
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
-      <h2 className="text-lg font-semibold text-[var(--color-fg)]">{title}</h2>
+      <h2 className="flex items-center gap-2 text-xl font-bold tracking-wide text-[var(--color-fg)]">
+        <span className="h-4 w-1 rounded-full bg-brand-500" aria-hidden="true" />
+        {title}
+      </h2>
       {action}
     </div>
   )
@@ -172,7 +177,7 @@ export function StatTile({
         ) : null}
       </div>
       <div className="flex items-baseline gap-1">
-        <span className="tabular font-display text-3xl leading-none font-semibold text-[var(--color-fg)]">
+        <span className="tabular font-display text-4xl leading-none font-bold text-[var(--color-fg)]">
           {value}
         </span>
         {unit ? (
@@ -308,7 +313,7 @@ export function Segmented<T extends string>({
               ${size === 'sm' ? 'min-h-9 px-2 text-xs' : 'min-h-10 px-3 text-sm'}
               ${
                 selected
-                  ? 'bg-brand-500 text-white'
+                  ? 'bg-brand-500 text-ink-950 shadow-md shadow-brand-500/25'
                   : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
               }`}
           >
@@ -443,10 +448,14 @@ export function Sheet({
         aria-labelledby={titleId}
         className="animate-sheet-up relative flex max-h-[90dvh] w-full flex-col
           rounded-t-3xl border border-[var(--color-line)] bg-[var(--color-surface)]
-          sm:max-w-lg sm:rounded-3xl"
+          shadow-2xl sm:max-w-lg sm:rounded-3xl"
       >
+        <span
+          className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[var(--color-line)] sm:hidden"
+          aria-hidden="true"
+        />
         <div className="flex items-center justify-between gap-3 border-b border-[var(--color-line)] px-4 py-3">
-          <h2 id={titleId} className="text-lg font-semibold">
+          <h2 id={titleId} className="text-xl font-bold tracking-wide">
             {title}
           </h2>
           <IconButton icon="x" label="Close" onClick={onClose} />
@@ -600,10 +609,10 @@ export function EmptyState({
 }) {
   return (
     <div className="card flex flex-col items-center gap-3 px-6 py-10 text-center">
-      <span className="grid size-14 place-items-center rounded-2xl bg-brand-500/10 text-brand-400">
+      <span className="grid size-14 place-items-center rounded-2xl bg-brand-500/15 text-brand-400">
         <Icon name={icon} size={26} />
       </span>
-      <h3 className="text-lg font-semibold">{title}</h3>
+      <h3 className="text-xl font-bold tracking-wide">{title}</h3>
       <p className="max-w-[38ch] text-sm text-[var(--color-fg-muted)]">{message}</p>
       {action}
     </div>
@@ -613,10 +622,190 @@ export function EmptyState({
 export function PageTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <header className="mb-5">
-      <h1 className="font-display text-3xl font-semibold tracking-wide">{title}</h1>
+      <h1 className="font-display text-4xl font-bold tracking-wide">{title}</h1>
       {subtitle ? (
         <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">{subtitle}</p>
       ) : null}
     </header>
   )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Gamification & list primitives                                              */
+/* -------------------------------------------------------------------------- */
+
+const RING_COLORS = { brand: 'var(--color-brand-500)', go: 'var(--color-go-500)' }
+
+/** Circular progress toward a target. Children render centred inside the ring. */
+export function ProgressRing({
+  value,
+  max,
+  size = 96,
+  stroke = 8,
+  color = 'brand',
+  label,
+  children,
+}: {
+  value: number
+  max: number
+  size?: number
+  stroke?: number
+  color?: 'brand' | 'go'
+  label?: string
+  children?: ReactNode
+}) {
+  const radius = (size - stroke) / 2
+  const circumference = 2 * Math.PI * radius
+  const ratio = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0
+  const aria = label ?? `${value} of ${max}`
+
+  return (
+    <div
+      role="img"
+      aria-label={aria}
+      className="relative inline-grid shrink-0 place-items-center"
+      style={{ width: size, height: size }}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden="true">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="var(--color-line)"
+          strokeWidth={stroke}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={RING_COLORS[color]}
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - ratio)}
+          style={{ transition: 'stroke-dashoffset 300ms cubic-bezier(0.22, 1, 0.36, 1)' }}
+        />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center text-center">{children}</div>
+    </div>
+  )
+}
+
+const STREAK_SIZES = {
+  sm: { icon: 18, num: 'text-xl', unit: 'text-[10px]', pad: 'px-2.5 py-1' },
+  md: { icon: 26, num: 'text-3xl', unit: 'text-xs', pad: 'px-3.5 py-1.5' },
+  lg: { icon: 40, num: 'text-5xl', unit: 'text-sm', pad: 'px-5 py-3' },
+}
+
+/** Filled SVG flame + count. Muted when the streak is not currently active. */
+export function StreakBadge({
+  count,
+  unit = 'day',
+  active = true,
+  size = 'md',
+}: {
+  count: number
+  unit?: 'day' | 'week'
+  active?: boolean
+  size?: 'sm' | 'md' | 'lg'
+}) {
+  const s = STREAK_SIZES[size]
+  const text = `${count} ${unit}${count === 1 ? '' : 's'} streak`
+  return (
+    <span
+      role="img"
+      aria-label={active ? text : `${text} (not active today)`}
+      className={`inline-flex items-center gap-2 rounded-2xl ${s.pad} ${
+        active ? 'bg-brand-500/15 text-flame' : 'bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]'
+      }`}
+    >
+      <svg width={s.icon} height={s.icon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          d="M12 22c4.42 0 8-3.13 8-7 0-4.5-4-6.5-4-11 0 0-1.5 2.5-3.5 4C10 9.5 8 11.5 8 15c0 1.6.8 3 2 3.9"
+          fill="currentColor"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 22c-2.2 0-4-1.5-4-3.6 0-1.9 2-2.9 2.6-4.9.9 1.1 5.4 2.6 5.4 5.2 0 1.8-1.7 3.3-4 3.3z"
+          fill="var(--color-surface)"
+          opacity="0.35"
+        />
+      </svg>
+      <span className="flex items-baseline gap-1" aria-hidden="true">
+        <span className={`num-display ${s.num}`}>{count}</span>
+        <span className={`font-semibold uppercase tracking-wider ${s.unit}`}>{unit}</span>
+      </span>
+    </span>
+  )
+}
+
+/** Small "PR" trophy pill shown next to personal-record sets. */
+export function PRBadge({ className = '' }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md bg-brand-500 px-1.5 py-0.5
+        text-[11px] font-bold uppercase tracking-wider text-ink-950 ${className}`}
+    >
+      <Icon name="trophy" size={12} />
+      PR
+    </span>
+  )
+}
+
+/** Tappable list row (56px min). Renders a router Link when `to` is given. */
+export function ListRow({
+  to,
+  onClick,
+  leading,
+  title,
+  subtitle,
+  trailing,
+}: {
+  to?: string
+  onClick?: () => void
+  leading?: ReactNode
+  title: string
+  subtitle?: string
+  trailing?: ReactNode
+}) {
+  const interactive = Boolean(to || onClick)
+  const cls = `flex min-h-14 w-full items-center gap-3 rounded-xl px-3 py-2 text-left
+    transition-colors duration-150 ${
+      interactive ? 'hover:bg-[var(--color-surface-2)] active:bg-[var(--color-surface-2)]' : ''
+    }`
+  const body = (
+    <>
+      {leading ? <span className="shrink-0">{leading}</span> : null}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-semibold text-[var(--color-fg)]">{title}</span>
+        {subtitle ? (
+          <span className="block truncate text-sm text-[var(--color-fg-muted)]">{subtitle}</span>
+        ) : null}
+      </span>
+      {trailing ? (
+        <span className="shrink-0 text-[var(--color-fg-muted)]">{trailing}</span>
+      ) : interactive ? (
+        <Icon name="chevron-right" size={18} className="shrink-0 text-[var(--color-fg-muted)]" />
+      ) : null}
+    </>
+  )
+  if (to) {
+    return (
+      <Link to={to} className={cls}>
+        {body}
+      </Link>
+    )
+  }
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cls}>
+        {body}
+      </button>
+    )
+  }
+  return <div className={cls}>{body}</div>
 }

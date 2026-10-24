@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import {
@@ -6,11 +6,15 @@ import {
   Button,
   Card,
   ChartTable,
+  ConfirmSheet,
   EmptyState,
+  ProgressRing,
   SectionHeader,
   Skeleton,
   StatTile,
+  StreakBadge,
 } from '../components/ui'
+import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { BodyWeightChart } from '../components/LazyCharts'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
@@ -18,13 +22,14 @@ import { useWorkouts } from '../hooks/useWorkouts'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { MUSCLE_COLORS } from '../data/exercises'
-import { nextProgram, planToExercises, PROGRAMS } from '../data/programs'
-import { estimateMinutes } from './StartScreen'
+import { usePlans } from '../hooks/usePlans'
+import { estimateMinutes, setCountOf, startPlanDay } from '../lib/plans'
+import { computeStreaks, workoutsByDay } from '../lib/streaks'
 import { fmtVolume, fmtWeight } from '../lib/units'
-import { addDays, dayKey, fmtDuration, relativeDay, startOfWeek } from '../lib/date'
+import { addDays, dayKey, fmtDuration, parseDayKey, relativeDay, startOfWeek } from '../lib/date'
 import { muscleRecovery } from '../lib/recovery'
-import { bodyWeightSeries, personalRecords, weekStreak, workoutsThisWeek } from '../lib/stats'
-import type { MuscleGroup } from '../types'
+import { bodyWeightSeries, personalRecords, workoutsThisWeek } from '../lib/stats'
+import type { MuscleGroup, ScheduleSlot, Workout } from '../types'
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -97,6 +102,106 @@ function WeekStrip({ trainedDays, goal }: { trainedDays: Set<string>; goal: numb
   )
 }
 
+/** Upcoming plan days, today first: done / today / rest / upcoming. */
+function PlanWeekStrip({ slots, byDay }: { slots: ScheduleSlot[]; byDay: Map<string, Workout[]> }) {
+  return (
+    <Card>
+      <h2 className="mb-3 text-base font-semibold">Next 7 days</h2>
+      <ul className="grid grid-cols-7 gap-1">
+        {slots.map((s) => {
+          const done = byDay.has(s.date)
+          const label = s.isRest ? 'Rest' : (s.day?.name ?? '')
+          const weekday = parseDayKey(s.date).toLocaleDateString(undefined, { weekday: 'narrow' })
+          return (
+            <li key={s.date} className="flex min-w-0 flex-col items-center gap-1.5">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-wider ${
+                  s.isToday ? 'text-brand-400' : 'text-[var(--color-fg-muted)]'
+                }`}
+              >
+                {weekday}
+              </span>
+              <span
+                className={`grid size-9 place-items-center rounded-full border text-xs font-bold
+                  ${
+                    done
+                      ? 'border-go-500 bg-go-500 text-ink-950'
+                      : s.isRest
+                        ? 'border-rest text-rest'
+                        : s.isToday
+                          ? 'border-brand-500 bg-brand-500/15 text-brand-400'
+                          : 'border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]'
+                  }
+                  ${s.isToday && !done ? 'ring-2 ring-brand-500/40' : ''}`}
+              >
+                {done ? (
+                  <Icon name="check" size={15} title="Trained" />
+                ) : s.isRest ? (
+                  <Icon name="moon" size={15} title="Rest day" />
+                ) : (
+                  parseDayKey(s.date).getDate()
+                )}
+              </span>
+              <span className="w-full truncate text-center text-[10px] font-semibold text-[var(--color-fg-muted)]">
+                {label}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </Card>
+  )
+}
+
+/** Streak flame, weekly-goal ring and lifetime numbers in one block. */
+function StreakCard({ stats }: { stats: ReturnType<typeof computeStreaks> }) {
+  const unit = stats.mode === 'plan' ? 'day' : 'week'
+  return (
+    <Card>
+      <div className="flex items-center gap-4">
+        <ProgressRing
+          value={stats.workoutsThisWeek}
+          max={stats.weeklyGoal}
+          size={92}
+          stroke={9}
+          color={stats.workoutsThisWeek >= stats.weeklyGoal ? 'go' : 'brand'}
+          label={`${stats.workoutsThisWeek} of ${stats.weeklyGoal} workouts this week`}
+        >
+          <span className="num-display text-3xl leading-none">{stats.workoutsThisWeek}</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+            of {stats.weeklyGoal}
+          </span>
+        </ProgressRing>
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <StreakBadge count={stats.current} unit={unit} active={stats.current > 0} size="lg" />
+          <dl className="grid grid-cols-2 gap-2">
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                Longest
+              </dt>
+              <dd className="tabular font-display text-xl font-bold">
+                {stats.longest} {unit}
+                {stats.longest === 1 ? '' : 's'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                Total
+              </dt>
+              <dd className="tabular font-display text-xl font-bold">{stats.totalWorkouts}</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-[var(--color-fg-muted)]">
+        {stats.mode === 'plan'
+          ? 'Every trained day and every planned rest day keeps your streak alive.'
+          : `Hit ${stats.weeklyGoal} sessions a week to build a weekly streak.`}
+      </p>
+    </Card>
+  )
+}
+
 const RECOVERY_STYLE = {
   fresh: 'border-go-500/40 bg-go-500/10 text-go-400',
   recovering: 'border-amber-500/40 bg-amber-500/10 text-amber-400',
@@ -140,6 +245,9 @@ export function Dashboard() {
   const { workouts, loading } = useWorkouts()
   const { entries, latest, previous, loading: bodyLoading } = useBodyLog()
   const { active, save } = useActiveWorkout()
+  const { activePlan, activeState, today, upcoming, isRestDay, loading: plansLoading, delayToday, skipToday } =
+    usePlans()
+  const [confirm, setConfirm] = useState<'delay' | 'skip' | null>(null)
 
   const unit = profile.unit
   const firstName = (profile.displayName || user?.displayName || '').split(' ')[0]
@@ -149,7 +257,18 @@ export function Dashboard() {
     () => new Set(thisWeek.map((w) => dayKey(new Date(w.startedAt)))),
     [thisWeek]
   )
-  const streak = useMemo(() => weekStreak(workouts), [workouts])
+  const streakStats = useMemo(
+    () =>
+      computeStreaks(workouts, {
+        isRestDay,
+        planStartDate: activeState?.startDate,
+        weeklyGoal: profile.weeklyGoal,
+      }),
+    [workouts, isRestDay, activeState?.startDate, profile.weeklyGoal]
+  )
+  const byDay = useMemo(() => workoutsByDay(workouts), [workouts])
+  const week = useMemo(() => upcoming(7), [upcoming])
+  const nextWorkout = useMemo(() => upcoming(9).find((x) => !x.isRest && x.day), [upcoming])
   const prs = useMemo(() => personalRecords(workouts).slice(0, 3), [workouts])
   const bwSeries = useMemo(() => bodyWeightSeries(entries, 90), [entries])
 
@@ -159,17 +278,19 @@ export function Dashboard() {
 
   const weightDelta = latest && previous ? latest.weightKg - previous.weightKg : null
 
-  const next = useMemo(() => nextProgram(workouts), [workouts])
+  const todayDone = byDay.has(dayKey())
 
-  function startProgram(id: string) {
-    const program = PROGRAMS.find((p) => p.id === id)
-    if (!program) return
-    save({
-      name: program.name,
-      startedAt: new Date().toISOString(),
-      exercises: planToExercises(program.exercises),
-    })
+  function startToday() {
+    if (!activePlan || !today || today.isRest || !today.day) return
+    save(startPlanDay(activePlan, today))
     navigate('/workout')
+  }
+
+  async function confirmAdjust() {
+    const kind = confirm
+    setConfirm(null)
+    if (kind === 'delay') await delayToday()
+    else if (kind === 'skip') await skipToday()
   }
 
   return (
@@ -181,6 +302,16 @@ export function Dashboard() {
             {firstName || 'Athlete'}
           </h1>
         </div>
+        <div className="flex shrink-0 gap-2">
+        <Link
+          to="/body"
+          aria-label="Body weight"
+          className="grid size-11 shrink-0 place-items-center rounded-xl border border-[var(--color-line)]
+            bg-[var(--color-surface)] text-[var(--color-fg-muted)] transition-colors duration-200
+            hover:border-brand-500/60 hover:text-brand-400"
+        >
+          <Icon name="scale" size={20} />
+        </Link>
         <Link
           to="/settings"
           aria-label="Settings"
@@ -190,50 +321,130 @@ export function Dashboard() {
         >
           <Icon name="settings" size={20} />
         </Link>
+        </div>
       </header>
 
-      {/* Primary action — the one thing you open this app to do. */}
-      {active ? (
-        <Button
-          size="lg"
-          full
-          icon="dumbbell"
-          onClick={() => navigate('/workout')}
-          className="text-lg"
-        >
-          Resume {active.name}
-        </Button>
+      {/* Today — the one thing you open this app to do. */}
+      <section aria-label="Today" className="card-accent rounded-2xl p-5">
+        {active ? (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-400">In progress</p>
+            <h2 className="mt-1 font-display text-4xl font-bold leading-none">
+              {active.planDayName ?? active.name}
+            </h2>
+            <Button size="lg" full icon="dumbbell" onClick={() => navigate('/workout')} className="mt-4 text-lg">
+              Resume workout
+            </Button>
+          </>
+        ) : plansLoading ? (
+          <Skeleton className="h-[140px]" />
+        ) : !activePlan || !today ? (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-400">No active plan</p>
+            <h2 className="mt-1 font-display text-4xl font-bold leading-none">Pick your split</h2>
+            <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
+              Choose a plan and the app tells you what to train every day, rest days included.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <Button size="lg" icon="layers" onClick={() => navigate('/plans')} className="flex-1">
+                Browse plans
+              </Button>
+              <Button variant="secondary" size="lg" onClick={() => navigate('/workout')}>
+                Quick start
+              </Button>
+            </div>
+          </>
+        ) : todayDone ? (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-go-400">Today</p>
+            <h2 className="mt-1 flex items-center gap-2 font-display text-4xl font-bold leading-none">
+              <Icon name="check-circle" size={30} className="text-go-400" />
+              Done for today
+            </h2>
+            <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
+              {nextWorkout
+                ? `Up next: ${nextWorkout.day?.name} on ${parseDayKey(nextWorkout.date).toLocaleDateString(undefined, { weekday: 'long' })}.`
+                : 'Nice work. Recover well.'}
+            </p>
+          </>
+        ) : today.isRest || !today.day ? (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-rest">
+              {today.adjusted === 'delay' ? 'Delayed' : today.adjusted === 'skip' ? 'Skipped' : 'Today'}
+              {today.dayNumber > 0 ? ` · Day ${today.dayNumber} of ${today.cycleLength}` : ''}
+            </p>
+            <h2 className="mt-1 flex items-center gap-2 font-display text-4xl font-bold leading-none">
+              <Icon name="moon" size={30} className="text-rest" />
+              {today.dayIndex === null ? 'Plan starts soon' : 'Rest day'}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
+              {nextWorkout?.day
+                ? `Next up: ${nextWorkout.day.name}${nextWorkout.date === today.date ? '' : ` on ${parseDayKey(nextWorkout.date).toLocaleDateString(undefined, { weekday: 'long' })}`}.`
+                : 'Recovery is part of the plan.'}
+            </p>
+            <Button variant="secondary" size="lg" full onClick={() => navigate('/workout')} className="mt-4">
+              Train anyway
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-400">
+              Day {today.dayNumber} of {today.cycleLength} · Cycle {today.cycle}
+            </p>
+            <h2 className="mt-1 font-display text-5xl font-bold leading-none">{today.day.name}</h2>
+            {today.day.focus ? (
+              <p className="mt-1 text-sm font-medium text-[var(--color-fg-muted)]">{today.day.focus}</p>
+            ) : null}
+            <p className="tabular mt-3 text-xs font-semibold text-[var(--color-fg-muted)]">
+              {today.day.exercises.length} exercises · {setCountOf(today.day.exercises)} sets · ~
+              {estimateMinutes(today.day.exercises)} min
+            </p>
+            <Button variant="go" size="lg" full icon="play" onClick={startToday} className="mt-4 text-lg">
+              Start {today.day.name}
+            </Button>
+            <div className="mt-2 flex gap-2">
+              <Button variant="ghost" size="sm" icon="arrow-right" onClick={() => setConfirm('delay')} className="flex-1">
+                Delay a day
+              </Button>
+              <Button variant="ghost" size="sm" icon="skip-forward" onClick={() => setConfirm('skip')} className="flex-1">
+                Skip
+              </Button>
+            </div>
+          </>
+        )}
+      </section>
+
+      <ConfirmSheet
+        open={confirm !== null}
+        title={confirm === 'delay' ? 'Delay a day?' : 'Skip today?'}
+        message={
+          confirm === 'delay'
+            ? "Today becomes a rest day and the whole schedule shifts back one day, so tomorrow you'll do today's workout."
+            : "Today becomes a rest day and today's workout is dropped. The rest of the schedule stays where it is."
+        }
+        confirmLabel={confirm === 'delay' ? 'Delay a day' : 'Skip today'}
+        onConfirm={confirmAdjust}
+        onCancel={() => setConfirm(null)}
+      />
+
+      {loading ? <Skeleton className="h-[140px]" /> : <StreakCard stats={streakStats} />}
+
+      {activePlan && week.length > 0 ? (
+        <PlanWeekStrip slots={week} byDay={byDay} />
       ) : (
-        <section aria-label="Up next" className="hero relative overflow-hidden rounded-2xl p-5">
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/80">Up next</p>
-          <h2 className="mt-1 font-display text-5xl font-bold leading-none text-white">{next.name}</h2>
-          <p className="mt-1 text-sm font-medium text-white/85">{next.focus}</p>
-          <p className="tabular mt-3 text-xs font-semibold text-white/80">
-            {next.exercises.length} exercises ·{' '}
-            {next.exercises.reduce((n, e) => n + e.targets.length, 0)} sets · ~
-            {estimateMinutes(next.exercises)} min
-          </p>
-          <div className="mt-4 flex gap-2">
-            <Button variant="go" size="lg" icon="play" onClick={() => startProgram(next.id)} className="flex-1">
-              Start {next.name}
-            </Button>
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => navigate('/workout')}
-              aria-label="Choose a different workout"
-            >
-              Other
-            </Button>
-          </div>
-        </section>
+        <WeekStrip trainedDays={trainedDays} goal={profile.weeklyGoal} />
       )}
+
+      <section aria-label="Activity">
+        <SectionHeader title="Activity" />
+        <Card>
+          <ActivityHeatmap workouts={workouts} isRestDay={isRestDay} variant="compact" />
+        </Card>
+      </section>
 
       <section aria-label="Key stats" className="grid grid-cols-2 gap-3">
         {loading ? (
           <>
-            <Skeleton className="h-[108px]" />
-            <Skeleton className="h-[108px]" />
             <Skeleton className="h-[108px]" />
             <Skeleton className="h-[108px]" />
           </>
@@ -246,27 +457,6 @@ export function Dashboard() {
               icon="layers"
               accent="go"
               delta={`${weekSets} sets logged`}
-            />
-            <StatTile
-              label="Sessions"
-              value={String(thisWeek.length)}
-              unit={`/ ${profile.weeklyGoal}`}
-              icon="target"
-              accent="brand"
-              delta={
-                thisWeek.length >= profile.weeklyGoal
-                  ? 'Goal hit'
-                  : `${profile.weeklyGoal - thisWeek.length} to go`
-              }
-              trend={thisWeek.length >= profile.weeklyGoal ? 'up' : 'flat'}
-            />
-            <StatTile
-              label="Week streak"
-              value={String(streak)}
-              unit={streak === 1 ? 'week' : 'weeks'}
-              icon="flame"
-              accent="violet"
-              delta={streak > 0 ? 'Keep it alive' : 'Train to start one'}
             />
             <StatTile
               label="Body weight"
@@ -285,35 +475,7 @@ export function Dashboard() {
         )}
       </section>
 
-      <WeekStrip trainedDays={trainedDays} goal={profile.weeklyGoal} />
-
       {workouts.length > 0 ? <RecoveryCard workouts={workouts} /> : null}
-
-      {!active ? (
-        <section>
-          <SectionHeader title="Set workouts" />
-          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
-            {PROGRAMS.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => startProgram(p.id)}
-                className="card min-w-[10.5rem] shrink-0 snap-start p-3.5 text-left
-                  transition-colors duration-200 hover:border-brand-500/60"
-              >
-                <span className="mb-2 grid size-9 place-items-center rounded-lg bg-brand-500/10 text-brand-400">
-                  <Icon name="dumbbell" size={18} />
-                </span>
-                <span className="block font-display text-xl font-semibold">{p.name}</span>
-                <span className="block text-xs text-[var(--color-fg-muted)]">{p.focus}</span>
-                <span className="mt-2 block text-xs font-semibold text-brand-400">
-                  {p.exercises.length} exercises
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <section>
         <SectionHeader

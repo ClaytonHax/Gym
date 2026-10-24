@@ -10,6 +10,8 @@ import { Body } from './pages/Body'
 import { Dashboard } from './pages/Dashboard'
 import { History } from './pages/History'
 import { Login } from './pages/Login'
+import { PlanEditor } from './pages/PlanEditor'
+import { Plans } from './pages/Plans'
 import { Progress } from './pages/Progress'
 import { SessionDetail } from './pages/SessionDetail'
 import { Settings } from './pages/Settings'
@@ -68,6 +70,9 @@ function Gate() {
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/plans" element={<Plans />} />
+        <Route path="/plans/new" element={<PlanEditor />} />
+        <Route path="/plans/:id" element={<PlanEditor />} />
         <Route path="/workout" element={<WorkoutActive />} />
         <Route path="/history" element={<History />} />
         <Route path="/history/:id" element={<SessionDetail />} />

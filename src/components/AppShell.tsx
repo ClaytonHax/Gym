@@ -7,10 +7,10 @@ import { InstallPrompt } from './InstallPrompt'
 
 const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean }> = [
   { to: '/', label: 'Home', icon: 'home' },
-  { to: '/history', label: 'History', icon: 'history' },
+  { to: '/plans', label: 'Plans', icon: 'layers' },
   { to: '/workout', label: 'Train', icon: 'dumbbell', primary: true },
   { to: '/progress', label: 'Progress', icon: 'trending' },
-  { to: '/body', label: 'Body', icon: 'scale' },
+  { to: '/history', label: 'History', icon: 'history' },
 ]
 
 function OfflineBanner() {
@@ -56,14 +56,14 @@ function ActiveWorkoutBar() {
   return (
     <NavLink
       to="/workout"
-      className="flex items-center gap-3 border-t border-brand-500/30 bg-brand-500/15 px-4 py-2.5
+      className="flex min-h-14 items-center gap-3 border-t border-brand-500/30 bg-brand-500/15 px-4 py-2.5
         transition-colors duration-200 hover:bg-brand-500/25"
     >
-      <span className="animate-pulse-ring grid size-8 shrink-0 place-items-center rounded-full bg-brand-500 text-white">
+      <span className="animate-pulse-ring grid size-8 shrink-0 place-items-center rounded-full bg-brand-500 text-ink-950">
         <Icon name="dumbbell" size={16} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{active.name}</span>
+        <span className="block truncate text-sm font-semibold">{active.planDayName ?? active.name}</span>
         <span className="tabular block text-xs text-[var(--color-fg-muted)]">
           In progress · {fmtDuration(elapsed)}
         </span>
@@ -87,7 +87,7 @@ export function AppShell() {
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-60
-          focus:rounded-lg focus:bg-brand-500 focus:px-4 focus:py-2 focus:font-semibold focus:text-white"
+          focus:rounded-lg focus:bg-brand-500 focus:px-4 focus:py-2 focus:font-semibold focus:text-ink-950"
       >
         Skip to content
       </a>
@@ -106,7 +106,7 @@ export function AppShell() {
       <nav
         aria-label="Main"
         className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-[var(--color-line)]
-          bg-[var(--color-surface)]/95 backdrop-blur-lg"
+          bg-[var(--color-surface)]/95 shadow-[0_-12px_32px_-20px_rgb(0,0,0,0.6)] backdrop-blur-lg"
       >
         <ActiveWorkoutBar />
         <ul className="mx-auto flex max-w-2xl items-end">
@@ -117,7 +117,7 @@ export function AppShell() {
                 end={tab.to === '/'}
                 className={({ isActive }) =>
                   tab.primary
-                    ? `relative -mt-5 flex flex-col items-center gap-1 pb-2 ${
+                    ? `group relative -mt-5 flex flex-col items-center gap-1 pb-2 ${
                         isActive ? 'text-brand-400' : 'text-[var(--color-fg-muted)]'
                       }`
                     : `flex min-h-14 flex-col items-center justify-center gap-1 py-2
@@ -132,24 +132,26 @@ export function AppShell() {
                   tab.primary ? (
                     <>
                       <span
-                        className="grid size-14 place-items-center rounded-2xl bg-brand-500 text-white
+                        className="grid size-14 place-items-center rounded-2xl bg-brand-500 text-ink-950
                           shadow-lg shadow-brand-500/40 ring-4 ring-[var(--color-surface)]
-                          transition-colors duration-200 hover:bg-brand-600"
+                          transition-[background-color,transform] duration-200 group-hover:bg-brand-400
+                          group-active:scale-95"
                       >
                         <Icon name={tab.icon} size={26} />
                       </span>
-                      <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider">{tab.label}</span>
                     </>
                   ) : (
                     <>
-                      <Icon name={tab.icon} size={22} />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
-                      {/* Active state is shape + colour, not colour alone. */}
+                      {/* Active state is shape (pill) + colour, not colour alone. */}
                       <span
-                        className={`h-0.5 w-6 rounded-full transition-colors duration-200 ${
-                          isActive ? 'bg-brand-500' : 'bg-transparent'
+                        className={`grid h-8 w-14 place-items-center rounded-full transition-colors duration-200 ${
+                          isActive ? 'bg-brand-500/15' : 'bg-transparent'
                         }`}
-                      />
+                      >
+                        <Icon name={tab.icon} size={22} />
+                      </span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider">{tab.label}</span>
                     </>
                   )
                 }

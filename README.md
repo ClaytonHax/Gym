@@ -13,12 +13,14 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 - Supersets with a linked-exercise marker; rest timer waits until the last exercise in the group
 - Plate calculator (kg or lb bars), per-set RPE, per-exercise notes
 - Live PR alert the moment a set beats your best estimated 1RM
-- Six built-in set workouts (Push 1/2, Pull 1/2, Legs 1/2) with per-set rep ranges and rest times; the dashboard suggests the next one in the rotation
+- Training plans: start from the built-in Push / Pull / Legs 8-day template (Push 1, Pull 1, Legs 1, Rest, Push 2, Pull 2, Legs 2, Rest) or build a custom cycle, edit days and exercises, and pick a start date. The Home screen shows today's workout, the week ahead, and lets you delay or skip a day
+- More plan templates are coming soon
 - Routine builder for your own workouts (sets, rep ranges, rest), plus empty sessions
 - 75+ exercise library across 10 muscle groups, extendable with your own movements
 - Sessions survive a refresh, a crash or a dead connection — and resume on any device
 
 **Progress**
+- Streaks and a GitHub-style activity heatmap (planned rest days keep a streak alive; weekly-goal streaks without a plan)
 - Weekly volume, estimated 1RM trends (Epley), muscle-group balance radar
 - Automatic personal records per exercise
 - Muscle recovery card showing what's ready to train again (rule-based, no AI)

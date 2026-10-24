@@ -33,12 +33,23 @@
   --color-ink-950: #0b1220;
 
   /* Semantic surfaces — remapped per theme below */
-  --color-canvas: #0b1220;
-  --color-surface: #131c2e;
-  --color-surface-2: #1b2639;
-  --color-line: #2a374e;
+  --color-canvas: #0b0f14;
+  --color-surface: #111827;
+  --color-surface-2: #1a2332;
+  --color-line: #263244;
   --color-fg: #f8fafc;
-  --color-fg-muted: #94a3b8;
+  --color-fg-muted: #9aa7ba;
+
+  /* Activity heatmap ramp (0 = none ... 4 = most volume) */
+  --color-heat-0: #1a2332;
+  --color-heat-1: #14532d;
+  --color-heat-2: #15803d;
+  --color-heat-3: #22c55e;
+  --color-heat-4: #4ade80;
+
+  /* Planned rest days + streak flame */
+  --color-rest: #38bdf8;
+  --color-flame: #fb923c;
 
   --radius-card: 1rem;
 
@@ -57,6 +68,24 @@ html.light {
   --color-line: #d7dde8;
   --color-fg: #0f172a;
   --color-fg-muted: #475569;
+
+  --color-heat-0: #e8edf5;
+  --color-heat-1: #bbf7d0;
+  --color-heat-2: #4ade80;
+  --color-heat-3: #16a34a;
+  --color-heat-4: #166534;
+  --color-rest: #0284c7;
+  --color-flame: #c2410c;
+
+  /* Accent text shades are tuned for dark surfaces; darken them on white so
+     text-*-400 utilities keep >= 4.5:1 contrast. */
+  --color-brand-400: #c2410c;
+  --color-go-400: #15803d;
+  --color-go-500: #16a34a;
+  --color-sky-400: #0369a1;
+  --color-violet-400: #6d28d9;
+  --color-rose-400: #be123c;
+  --color-amber-400: #b45309;
 }
 
 @layer base {
@@ -109,9 +138,15 @@ html.light {
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand-500);
+    outline: 3px solid var(--color-brand-500);
     outline-offset: 2px;
-    border-radius: 4px;
+  }
+
+  /* Touch targets: every tappable control is at least 44px tall. Heatmap cells
+     (and anything marked .touch-auto) keep their own, smaller hit area. */
+  button:not(.touch-auto):not(.heat-cell):not(:has(> .heat-cell)),
+  [role='button']:not(.touch-auto):not(.heat-cell) {
+    min-height: 44px;
   }
 
   /* Kill iOS zoom-on-focus without dropping below the 16px floor */
@@ -150,6 +185,51 @@ html.light {
     background-color: var(--color-surface);
     border: 1px solid var(--color-line);
     border-radius: var(--radius-card);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 8px 24px -16px rgb(0 0 0 / 0.5);
+  }
+  html.light .card {
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.05), 0 8px 24px -18px rgb(15 23 42 / 0.2);
+  }
+
+  /* Card with a bold brand edge — the "today" / primary block. */
+  .card-accent {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-left: 3px solid var(--color-brand-500);
+    border-radius: var(--radius-card);
+    box-shadow: 0 10px 28px -18px rgb(249 115 22 / 0.5);
+  }
+
+  /* Big condensed numerals for stats and counters. */
+  .num-display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+    line-height: 1;
+    letter-spacing: 0.01em;
+  }
+
+  /* Heatmap cell. Intensity comes from data-level; rest days are outlined. */
+  .heat-cell {
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background-color: var(--color-heat-0);
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .heat-cell[data-level='1'] { background-color: var(--color-heat-1); }
+  .heat-cell[data-level='2'] { background-color: var(--color-heat-2); }
+  .heat-cell[data-level='3'] { background-color: var(--color-heat-3); }
+  .heat-cell[data-level='4'] { background-color: var(--color-heat-4); }
+  .heat-cell[data-rest='true'] {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--color-rest);
+  }
+  .heat-cell[data-future='true'] { opacity: 0.35; }
+  .heat-cell[data-selected='true'] {
+    box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-brand-500);
   }
 
   /* Scrollable rows (chips, day strips) without a visible bar */
@@ -239,7 +319,7 @@ html.light {
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-fg-muted);
-  transition: color 0.2s, border-color 0.2s;
+  transition: color 0.2s, border-color 0.2s, background-color 0.2s;
 }
 .chip:hover {
   color: var(--color-brand-400);
@@ -252,4 +332,23 @@ html.light {
     repeating-linear-gradient(135deg, rgb(255 255 255 / 0.06) 0 14px, transparent 14px 28px),
     linear-gradient(135deg, var(--color-brand-500), var(--color-brand-700));
   box-shadow: 0 10px 30px -12px rgb(249 115 22 / 0.55);
+}
+
+/* Subtle press feedback on buttons and links styled as controls. */
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+button {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 150ms;
+}
+
+/* Soft sweep for loading skeletons */
+@keyframes pop {
+  0% { transform: scale(0.9); opacity: 0; }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-pop {
+  animation: pop 0.3s var(--ease-out-soft) both;
 }

@@ -100,7 +100,7 @@ export function RestTimer({
           onClick={() => (running ? setEndsAt(null) : start())}
           aria-label={running ? 'Stop rest timer' : 'Start rest timer'}
           className={`grid size-12 shrink-0 place-items-center rounded-xl transition-colors duration-200
-            ${running ? 'bg-brand-500 text-white' : 'bg-[var(--color-surface-2)] text-brand-400 hover:bg-brand-500/15'}`}
+            ${running ? 'bg-brand-500 text-ink-950' : 'bg-[var(--color-surface-2)] text-brand-400 hover:bg-brand-500/15'}`}
         >
           <Icon name={running ? 'pause' : 'clock'} size={22} />
         </button>
@@ -127,7 +127,7 @@ export function RestTimer({
               className={`min-h-9 min-w-11 rounded-lg text-xs font-bold transition-colors duration-200
                 ${
                   duration === p
-                    ? 'bg-brand-500 text-white'
+                    ? 'bg-brand-500 text-ink-950'
                     : 'bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
                 }`}
             >

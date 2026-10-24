@@ -114,6 +114,7 @@ export const BUILTIN_EXERCISES: Exercise[] = [
 
   // Added for the Push / Pull / Legs programs
   ex('cable-lateral-raise', 'Cable Lateral Raise', 'Shoulders', 'Cable'),
+  ex('t-bar-row', 'T-Bar Row', 'Back', 'Machine'),
   ex('single-arm-cable-pulldown', 'Single Arm Cable Pulldown', 'Back', 'Cable'),
   ex('single-arm-cable-row', 'Single Arm Cable Row', 'Back', 'Cable'),
   ex('cable-pullover', 'Cable Pullover', 'Back', 'Cable'),

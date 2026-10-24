@@ -1,4 +1,10 @@
-import type { PlanExercise, Program, ProgramGroup, Routine, WorkoutExercise } from '../types'
+import type {
+  PlanDay,
+  PlanExercise,
+  PlanTemplate,
+  Routine,
+  WorkoutExercise,
+} from '../types'
 import { BUILTIN_EXERCISES } from './exercises'
 
 const BY_ID = new Map(BUILTIN_EXERCISES.map((e) => [e.id, e]))
@@ -27,121 +33,100 @@ const ABS = (): PlanExercise[] => [
   rx('serratus-jab', 3, '10-15', 1 * MIN),
 ]
 
+const SPLIT = ['5-9', '10-15']
+
+function day(id: string, name: string, focus: string, exercises: PlanExercise[]): PlanDay {
+  return { id, kind: 'workout', name, focus, exercises }
+}
+
+function rest(id: string): PlanDay {
+  return { id, kind: 'rest', name: 'Rest', exercises: [] }
+}
+
 /**
- * The six set workouts from the training sheet. Rep ranges, set counts and
- * rest are transcribed from a photo — tweak any of them by saving your own
- * routine from a finished session.
+ * The 8-day PPL cycle from the training sheet. Rep ranges, set counts and rest
+ * are transcribed from a photo; rest ranges use the midpoint (3-4 min = 210s).
+ * Day ids are fixed here and replaced with fresh ones when a template is cloned.
  */
-export const PROGRAMS: Program[] = [
+const PPL_DAYS: PlanDay[] = [
+  day('ppl-push-1', 'Push 1', 'Chest · Shoulders · Triceps', [
+    rx('incline-dumbbell-press', SPLIT, '', 3.5 * MIN),
+    rx('chest-press-machine', 3, '10-15', 2.5 * MIN),
+    rx('chest-fly', 3, '10-15', 2 * MIN),
+    rx('push-up', 1, 'failure', 2 * MIN),
+    rx('cable-lateral-raise', 1, 'failure', 2 * MIN),
+    rx('lateral-raise', 3, '8-15', 2 * MIN),
+    rx('overhead-extension', 3, '8-15', 2 * MIN),
+    rx('tricep-pushdown', 2, '8-15', 2 * MIN),
+  ]),
+  day('ppl-pull-1', 'Pull 1', 'Back · Rear delts · Biceps', [
+    rx('barbell-row', SPLIT, '', 3.5 * MIN),
+    rx('lat-pulldown', 3, '10-15', 2.5 * MIN),
+    rx('single-arm-cable-pulldown', 3, '10-15', 2 * MIN),
+    rx('straight-arm-pulldown', 3, '8-15', 2 * MIN),
+    rx('single-arm-cable-row', 2, '10-15', 2 * MIN),
+    rx('cable-pullover', 2, '10-15', 2 * MIN),
+    rx('rear-delt-fly', 2, '10-15', 2 * MIN),
+    rx('straight-bar-cable-curl', 3, '8-15', 2 * MIN),
+    rx('hammer-curl', 2, '8-15', 2 * MIN),
+  ]),
+  day('ppl-legs-1', 'Legs 1', 'Abs · Quads · Hamstrings · Calves', [
+    ...ABS(),
+    rx('squat', SPLIT, '', 4 * MIN),
+    rx('leg-press', 3, '10-15', 3 * MIN),
+    rx('lunge', 2, '12 each', 2 * MIN),
+    rx('leg-curl', 3, '10-15', 2 * MIN),
+    rx('leg-extension', 2, '10-15', 2 * MIN),
+    rx('calf-raise', 2, 'failure', 2 * MIN),
+  ]),
+  rest('ppl-rest-1'),
+  day('ppl-push-2', 'Push 2', 'Shoulders · Chest · Triceps', [
+    rx('dips', SPLIT, '', 3.5 * MIN),
+    rx('dumbbell-shoulder-press', SPLIT, '', 3.5 * MIN),
+    rx('cable-lateral-raise', 3, '10-15', 2 * MIN),
+    rx('lateral-raise', 3, '8-15', 2 * MIN),
+    rx('chest-press-machine', 2, '10-15', 2 * MIN),
+    rx('chest-fly', 2, '10-15', 2 * MIN),
+    rx('tricep-pushdown', 3, '8-15', 2 * MIN),
+    rx('overhead-extension', 2, '8-15', 2 * MIN),
+  ]),
+  day('ppl-pull-2', 'Pull 2', 'Lats · Rear delts · Biceps', [
+    rx('weighted-pull-up', SPLIT, '', 3.5 * MIN),
+    rx('t-bar-row', 3, '10-15', 3 * MIN),
+    rx('single-arm-cable-pulldown', 3, '10-15', 2 * MIN),
+    rx('straight-arm-pulldown', 3, '8-15', 2 * MIN),
+    rx('lat-pulldown', 3, '10-15', 2.5 * MIN),
+    rx('cable-pullover', 2, '10-15', 2 * MIN),
+    rx('rear-delt-fly', 2, '10-15', 2 * MIN),
+    rx('rope-curl', 3, '8-15', 2 * MIN),
+    rx('ez-bar-curl', 2, '8-15', 2 * MIN),
+  ]),
+  day('ppl-legs-2', 'Legs 2', 'Abs · Hamstrings · Quads · Glutes', [
+    ...ABS(),
+    rx('stiff-leg-deadlift', SPLIT, '', 4 * MIN),
+    rx('hack-squat', 3, '10-15', 3 * MIN),
+    rx('leg-curl', 3, '10-15', 2 * MIN),
+    rx('leg-extension', 3, '10-15', 2 * MIN),
+    rx('hip-thrust', 3, '10-15', 2 * MIN),
+    rx('calf-raise', 2, 'failure', 2 * MIN),
+  ]),
+  rest('ppl-rest-2'),
+]
+
+export const PPL_TEMPLATE_ID = 'ppl-8'
+
+export const PLAN_TEMPLATES: PlanTemplate[] = [
   {
-    id: 'push-1',
-    name: 'Push 1',
-    group: 'Push',
-    focus: 'Chest · Shoulders · Triceps',
-    exercises: [
-      rx('incline-dumbbell-press', ['5-9', '10-15'], '', 3.5 * MIN),
-      rx('chest-press-machine', 3, '10-15', 2.5 * MIN),
-      rx('chest-fly', 3, '10-15', 2 * MIN),
-      rx('push-up', 1, 'failure', 2 * MIN),
-      rx('cable-lateral-raise', 3, '10-15', 2 * MIN),
-      rx('lateral-raise', 1, 'failure', 2 * MIN),
-      rx('overhead-extension', 3, '8-15', 2 * MIN),
-      rx('tricep-pushdown', 2, '8-15', 2 * MIN),
-    ],
-  },
-  {
-    id: 'push-2',
-    name: 'Push 2',
-    group: 'Push',
-    focus: 'Shoulders · Chest · Triceps',
-    exercises: [
-      rx('dips', ['5-9', '5-9'], '', 3.5 * MIN),
-      rx('dumbbell-shoulder-press', ['5-9', '5-9'], '', 3.5 * MIN),
-      rx('cable-lateral-raise', 3, '10-15', 2 * MIN),
-      rx('lateral-raise', 3, '8-15', 2 * MIN),
-      rx('chest-press-machine', 2, '10-15', 2 * MIN),
-      rx('chest-fly', 3, '10-15', 2 * MIN),
-      rx('tricep-pushdown', 3, '8-15', 2 * MIN),
-      rx('overhead-extension', 2, '8-15', 2 * MIN),
-    ],
-  },
-  {
-    id: 'pull-1',
-    name: 'Pull 1',
-    group: 'Pull',
-    focus: 'Back · Rear delts · Biceps',
-    exercises: [
-      rx('barbell-row', ['5-9', '10-15'], '', 3.5 * MIN),
-      rx('lat-pulldown', 3, '10-15', 2.5 * MIN),
-      rx('single-arm-cable-pulldown', 3, '10-15', 2 * MIN),
-      rx('single-arm-cable-row', 3, '8-15', 2 * MIN),
-      rx('cable-pullover', 2, '10-15', 2 * MIN),
-      rx('rear-delt-fly', 2, '10-15', 2 * MIN),
-      rx('straight-bar-cable-curl', 3, '8-15', 2 * MIN),
-      rx('hammer-curl', 2, '8-15', 2 * MIN),
-    ],
-  },
-  {
-    id: 'pull-2',
-    name: 'Pull 2',
-    group: 'Pull',
-    focus: 'Lats · Rear delts · Biceps',
-    exercises: [
-      rx('weighted-pull-up', ['5-9', '5-9'], '', 3.5 * MIN),
-      rx('seated-cable-row', 3, '10-15', 3 * MIN),
-      rx('single-arm-cable-pulldown', 3, '10-15', 2 * MIN),
-      rx('straight-arm-pulldown', 3, '8-15', 2 * MIN),
-      rx('lat-pulldown', 2, '10-15', 2.5 * MIN),
-      rx('cable-pullover', 2, '10-15', 2 * MIN),
-      rx('rear-delt-fly', 2, '10-15', 2 * MIN),
-      rx('rope-curl', 3, '8-15', 2 * MIN),
-      rx('ez-bar-curl', 2, '8-15', 2 * MIN),
-    ],
-  },
-  {
-    id: 'legs-1',
-    name: 'Legs 1',
-    group: 'Legs',
-    focus: 'Abs · Quads · Hamstrings · Calves',
-    exercises: [
-      ...ABS(),
-      rx('squat', ['5-9', '10-15'], '', 4 * MIN),
-      rx('leg-press', 3, '10-15', 3 * MIN),
-      rx('lunge', 3, '12 each', 2 * MIN),
-      rx('leg-curl', 3, '10-15', 2 * MIN),
-      rx('leg-extension', 2, '10-15', 2 * MIN),
-      rx('calf-raise', 2, 'failure', 2 * MIN),
-    ],
-  },
-  {
-    id: 'legs-2',
-    name: 'Legs 2',
-    group: 'Legs',
-    focus: 'Abs · Hamstrings · Quads · Glutes',
-    exercises: [
-      ...ABS(),
-      rx('stiff-leg-deadlift', ['5-9', '10-15'], '', 4 * MIN),
-      rx('hack-squat', 3, '10-15', 3 * MIN),
-      rx('leg-curl', 3, '10-15', 2 * MIN),
-      rx('leg-extension', 3, '10-15', 2 * MIN),
-      rx('hip-thrust', 2, '10-15', 2 * MIN),
-      rx('calf-raise', 2, 'failure', 2 * MIN),
-    ],
+    id: PPL_TEMPLATE_ID,
+    name: 'Push / Pull / Legs',
+    description: 'Two rounds of push, pull and legs, each followed by a rest day.',
+    tagline: '8-day cycle · 6 workouts · 2 rest',
+    days: PPL_DAYS,
   },
 ]
 
-export const PROGRAM_GROUPS: ProgramGroup[] = ['Push', 'Pull', 'Legs']
-
-/** The rotation the sheet implies: Push 1 → Pull 1 → Legs 1 → Push 2 → Pull 2 → Legs 2. */
-const ROTATION = ['push-1', 'pull-1', 'legs-1', 'push-2', 'pull-2', 'legs-2']
-
-/** Next program after the most recent finished session named like one; Push 1 to begin. */
-export function nextProgram(workoutsNewestFirst: Array<{ name: string }>): Program {
-  for (const w of workoutsNewestFirst) {
-    const i = ROTATION.findIndex((id) => PROGRAMS.find((p) => p.id === id)?.name === w.name)
-    if (i >= 0) return PROGRAMS.find((p) => p.id === ROTATION[(i + 1) % ROTATION.length])!
-  }
-  return PROGRAMS[0]
+export function getTemplate(id: string): PlanTemplate | undefined {
+  return PLAN_TEMPLATES.find((t) => t.id === id)
 }
 
 /** Turn a plan into fresh, un-ticked workout exercises with targets pre-filled. */

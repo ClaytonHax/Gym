@@ -47,7 +47,7 @@ export interface WorkoutExercise {
   supersetId?: string
 }
 
-export interface Workout {
+export interface Workout extends PlanTag {
   id: string
   name: string
   /** ISO timestamps — sortable as strings and safe to cache offline. */
@@ -62,7 +62,7 @@ export interface Workout {
 }
 
 /** A workout still being performed — one per user, kept in Firestore + localStorage. */
-export interface ActiveWorkout {
+export interface ActiveWorkout extends PlanTag {
   name: string
   startedAt: string
   exercises: WorkoutExercise[]
@@ -119,13 +119,83 @@ export interface Routine {
   createdAt: string
 }
 
-export type ProgramGroup = 'Push' | 'Pull' | 'Legs'
+/** yyyy-mm-dd local-day key (see lib/date.ts dayKey). */
+export type DayKey = string
 
-/** A built-in set workout (Push 1, Pull 2 …). */
-export interface Program {
+export type PlanDayKind = 'workout' | 'rest'
+
+export interface PlanDay {
+  /** Stable within the plan; React key, survives reordering. */
+  id: string
+  kind: PlanDayKind
+  /** "Push 1"; "Rest" for rest days. */
+  name: string
+  focus?: string
+  /** Empty for rest days. */
+  exercises: PlanExercise[]
+}
+
+/** users/{uid}/plans/{id} */
+export interface Plan {
   id: string
   name: string
-  group: ProgramGroup
-  focus: string
-  exercises: PlanExercise[]
+  templateId?: string
+  days: PlanDay[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** A built-in, read-only plan the user copies and customises. */
+export interface PlanTemplate {
+  id: string
+  name: string
+  description: string
+  /** "8-day cycle · 6 workouts · 2 rest" */
+  tagline: string
+  days: PlanDay[]
+}
+
+/**
+ * A one-off change to a single date. 'delay' forces rest that day and pushes the
+ * rest of the schedule back a day; 'skip' forces rest that day and drops its
+ * workout without moving anything after it.
+ */
+export interface ScheduleAdjustment {
+  date: DayKey
+  type: 'delay' | 'skip'
+}
+
+/** users/{uid}/state/activePlan */
+export interface ActivePlanState {
+  planId: string
+  /** Date of cycle day 1. */
+  startDate: DayKey
+  adjustments: ScheduleAdjustment[]
+}
+
+/** What the plan says about one calendar date. */
+export interface ScheduleSlot {
+  date: DayKey
+  /** null before startDate. */
+  dayIndex: number | null
+  day: PlanDay | null
+  /** 1-based; 0 before start. */
+  cycle: number
+  /** 1-based; 0 before start. */
+  dayNumber: number
+  cycleLength: number
+  /** Plan rest day or adjusted date. */
+  isRest: boolean
+  adjusted?: 'delay' | 'skip'
+  isFuture: boolean
+  isToday: boolean
+}
+
+/** Links a session back to the plan day it came from. */
+export interface PlanTag {
+  planId?: string
+  planName?: string
+  planDayIndex?: number
+  planDayName?: string
+  planCycle?: number
 }

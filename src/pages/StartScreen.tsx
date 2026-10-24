@@ -1,24 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Icon } from '../components/Icon'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { RoutineBuilder } from '../components/RoutineBuilder'
-import { Button, IconButton, Segmented } from '../components/ui'
+import { Button, IconButton, Sheet } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
 import { useRoutines } from '../hooks/useRoutines'
-import { useWorkouts } from '../hooks/useWorkouts'
+import { usePlans } from '../hooks/usePlans'
 import { MUSCLE_COLORS } from '../data/exercises'
-import { nextProgram, planToExercises, PROGRAMS, PROGRAM_GROUPS } from '../data/programs'
+import { planToExercises } from '../data/programs'
 import { fmtDuration } from '../lib/date'
-import type { ActiveWorkout, Exercise, PlanExercise, ProgramGroup, Routine, WorkoutExercise } from '../types'
+import { estimateMinutes, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
+import type { ActiveWorkout, Exercise, PlanExercise, Routine, WorkoutExercise } from '../types'
 
 function defaultName(): string {
   const h = new Date().getHours()
   return `${h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening'} Workout`
-}
-
-/** Rough session length: ~45s under tension per set plus the prescribed rest. */
-export function estimateMinutes(plan: PlanExercise[]): number {
-  const sec = plan.reduce((t, e) => t + e.targets.length * (45 + (e.restSec ?? 90)), 0)
-  return Math.round(sec / 60 / 5) * 5
 }
 
 function PlanCard({
@@ -79,15 +76,25 @@ function PlanCard({
 /** The Train tab when nothing is in progress: pick a program, a routine, or go freestyle. */
 export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void }) {
   const toast = useToast()
-  const { workouts } = useWorkouts()
+  const { activePlan, activeState, today } = usePlans()
   const { routines, deleteRoutine } = useRoutines()
-  const [group, setGroup] = useState<ProgramGroup>('Push')
+  const [anywayOpen, setAnywayOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editing, setEditing] = useState<Routine | null>(null)
 
-  const next = useMemo(() => nextProgram(workouts), [workouts])
-  const programs = PROGRAMS.filter((p) => p.group === group)
+  const todayDay = today?.day ?? null
+  const isWorkoutToday = Boolean(today && todayDay && !today.isRest && todayDay.kind === 'workout')
+  const workoutDays = activePlan
+    ? activePlan.days.flatMap((day, index) => (day.kind === 'workout' ? [{ day, index }] : []))
+    : []
+
+  /** Start any day of the active plan, tagged with its place in the cycle. */
+  function startPlanned(index: number) {
+    if (!activePlan || !activeState) return
+    const slot = scheduleFor(activePlan, activeState, today?.date ?? new Date())
+    onStart(startPlanDay(activePlan, { ...slot, day: activePlan.days[index], dayIndex: index, isRest: false }))
+  }
 
   function start(name: string, exercises: WorkoutExercise[]) {
     onStart({ name, startedAt: new Date().toISOString(), exercises })
@@ -108,42 +115,93 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-wide">Train</h1>
         <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-          Pick a set workout, run your own routine, or start from scratch.
+          Follow today\u2019s plan, run your own routine, or start from scratch.
         </p>
       </header>
 
-      <section aria-label="Up next">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">Up next</p>
-        <ul>
-          <PlanCard
-            highlight
-            title={next.name}
-            subtitle={next.focus}
-            plan={next.exercises}
-            onStart={() => start(next.name, planToExercises(next.exercises))}
-          />
-        </ul>
-      </section>
-
-      <section aria-label="Set workouts">
-        <h2 className="mb-3 text-lg font-semibold">Push · Pull · Legs</h2>
-        <Segmented
-          label="Workout type"
-          value={group}
-          onChange={setGroup}
-          options={PROGRAM_GROUPS.map((g) => ({ value: g, label: g }))}
-        />
-        <ul className="mt-3 flex flex-col gap-3">
-          {programs.map((p) => (
-            <PlanCard
-              key={p.id}
-              title={p.name}
-              subtitle={p.focus}
-              plan={p.exercises}
-              onStart={() => start(p.name, planToExercises(p.exercises))}
-            />
-          ))}
-        </ul>
+      <section aria-label="Today">
+        {!activePlan || !today ? (
+          <Link to="/plans" className="card-accent flex min-h-14 items-center gap-3 p-4">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
+              <Icon name="layers" size={22} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-display text-xl font-semibold">Follow a training plan</span>
+              <span className="block text-sm text-[var(--color-fg-muted)]">
+                Push / Pull / Legs or build your own, with a schedule that runs itself.
+              </span>
+            </span>
+            <Icon name="chevron-right" size={20} className="shrink-0 text-[var(--color-fg-muted)]" />
+          </Link>
+        ) : isWorkoutToday && todayDay ? (
+          <div className="card-accent overflow-hidden">
+            <div className="p-4 pb-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">
+                Today · Day {today.dayNumber} of {today.cycleLength} · Cycle {today.cycle}
+              </p>
+              <h2 className="num-display mt-1 text-4xl">{todayDay.name}</h2>
+              {todayDay.focus ? (
+                <p className="text-sm text-[var(--color-fg-muted)]">{todayDay.focus}</p>
+              ) : null}
+            </div>
+            <ul className="flex flex-col gap-1 px-4 pb-3 text-sm">
+              {todayDay.exercises.slice(0, 5).map((e, i) => (
+                <li key={`${e.exerciseId}-${i}`} className="flex items-center gap-2">
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: MUSCLE_COLORS[e.muscle] }}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                  <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
+                    {e.targets.length}×{e.targets[0] || '—'}
+                  </span>
+                </li>
+              ))}
+              {todayDay.exercises.length > 5 ? (
+                <li className="pl-3.5 text-xs text-[var(--color-fg-muted)]">
+                  +{todayDay.exercises.length - 5} more
+                </li>
+              ) : null}
+            </ul>
+            <div className="flex items-center gap-3 border-t border-[var(--color-line)] bg-[var(--color-surface-2)]/50 p-3">
+              <p className="tabular flex-1 text-xs text-[var(--color-fg-muted)]">
+                {todayDay.exercises.length} exercises · {setCountOf(todayDay.exercises)} sets · ~
+                {fmtDuration(estimateMinutes(todayDay.exercises) * 60)}
+              </p>
+              <Button
+                variant="go"
+                size="md"
+                icon="play"
+                onClick={() => onStart(startPlanDay(activePlan, today))}
+              >
+                Start
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="card-accent flex flex-col gap-3 p-4">
+            <div className="flex items-center gap-3">
+              <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-rest/15 text-rest">
+                <Icon name="moon" size={24} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-rest">
+                  Rest day · Day {today.dayNumber} of {today.cycleLength}
+                </p>
+                <h2 className="num-display text-3xl">Recover today</h2>
+              </div>
+            </div>
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              {today.adjusted
+                ? 'You moved today\u2019s workout. Rest up, or train anyway.'
+                : 'Your plan has a rest day here. Muscles grow while you recover.'}
+            </p>
+            <Button variant="secondary" full onClick={() => setAnywayOpen(true)}>
+              Train anyway
+            </Button>
+          </div>
+        )}
       </section>
 
       <section aria-label="My routines">
@@ -209,6 +267,31 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
           Choose exercises
         </Button>
       </section>
+
+      <Sheet open={anywayOpen} onClose={() => setAnywayOpen(false)} title="Train anyway">
+        <ul className="flex flex-col gap-2">
+          {workoutDays.map(({ day, index }) => (
+            <li key={day.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAnywayOpen(false)
+                  startPlanned(index)
+                }}
+                className="card flex min-h-14 w-full items-center gap-3 p-3 text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold">{day.name}</span>
+                  <span className="tabular block text-xs text-[var(--color-fg-muted)]">
+                    {day.exercises.length} exercises · {setCountOf(day.exercises)} sets
+                  </span>
+                </span>
+                <Icon name="play" size={18} className="shrink-0 text-go-400" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Sheet>
 
       <ExercisePicker
         open={pickerOpen}

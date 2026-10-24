@@ -19,6 +19,9 @@ import {
 } from '../components/LazyCharts'
 import { useSettings } from '../contexts/SettingsContext'
 import { useWorkouts } from '../hooks/useWorkouts'
+import { usePlans } from '../hooks/usePlans'
+import { ActivityHeatmap } from '../components/ActivityHeatmap'
+import { computeStreaks } from '../lib/streaks'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { fmtDate, fmtDuration } from '../lib/date'
 import { fmtVolume, fmtWeight } from '../lib/units'
@@ -36,6 +39,7 @@ export function Progress() {
   const { workouts, loading } = useWorkouts()
   const { profile } = useSettings()
   const navigate = useNavigate()
+  const { isRestDay, activeState } = usePlans()
   const unit = profile.unit
 
   const [range, setRange] = useState<Range>('12')
@@ -52,6 +56,17 @@ export function Progress() {
     [workouts, focusExerciseId]
   )
   const focusPr = prs.find((p) => p.exerciseId === focusExerciseId)
+
+  const streaks = useMemo(
+    () =>
+      computeStreaks(workouts, {
+        isRestDay,
+        planStartDate: activeState?.startDate,
+        weeklyGoal: profile.weeklyGoal,
+      }),
+    [workouts, isRestDay, activeState?.startDate, profile.weeklyGoal]
+  )
+  const streakUnit = streaks.mode === 'plan' ? 'day' : 'week'
 
   const totalVolume = workouts.reduce((s, w) => s + w.totalVolumeKg, 0)
   const totalTime = workouts.reduce((s, w) => s + w.durationSec, 0)
@@ -93,6 +108,33 @@ export function Progress() {
         title="Progress"
         subtitle={`${workouts.length} sessions · ${fmtVolume(totalVolume, unit)} total · ${fmtDuration(avgSession)} avg session`}
       />
+
+      <section aria-label="Consistency">
+        <SectionHeader title="Consistency" />
+        <Card>
+          <dl className="mb-4 grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: 'Current', value: streaks.current, unit: streakUnit, flame: streaks.current > 0 },
+              { label: 'Longest', value: streaks.longest, unit: streakUnit, flame: false },
+              { label: 'This week', value: streaks.workoutsThisWeek, unit: `/ ${streaks.weeklyGoal}`, flame: false },
+            ].map((t) => (
+              <div key={t.label} className="rounded-xl bg-[var(--color-surface-2)] px-2 py-3">
+                <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                  {t.label}
+                </dt>
+                <dd className="tabular font-display text-3xl font-bold leading-none">
+                  <span className={t.flame ? 'text-flame' : ''}>{t.value}</span>
+                  <span className="ml-1 text-xs font-semibold text-[var(--color-fg-muted)]">
+                    {t.unit}
+                    {t.unit === 'day' || t.unit === 'week' ? (t.value === 1 ? '' : 's') : ''}
+                  </span>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <ActivityHeatmap workouts={workouts} isRestDay={isRestDay} variant="full" />
+        </Card>
+      </section>
 
       <Segmented
         label="Time range"
