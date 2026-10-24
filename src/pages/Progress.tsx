@@ -104,10 +104,15 @@ export function Progress() {
 
   return (
     <div className="animate-rise flex flex-col gap-6">
-      <PageTitle
-        title="Progress"
-        subtitle={`${workouts.length} sessions · ${fmtVolume(totalVolume, unit)} total · ${fmtDuration(avgSession)} avg session`}
-      />
+      <div className="flex items-start justify-between gap-3">
+        <PageTitle
+          title="Progress"
+          subtitle={`${workouts.length} sessions · ${fmtVolume(totalVolume, unit)} total · ${fmtDuration(avgSession)} avg session`}
+        />
+        <Button variant="secondary" size="sm" icon="history" onClick={() => navigate('/history')} className="shrink-0">
+          History
+        </Button>
+      </div>
 
       <section aria-label="Consistency">
         <SectionHeader title="Consistency" />

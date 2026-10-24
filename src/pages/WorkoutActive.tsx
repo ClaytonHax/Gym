@@ -26,6 +26,54 @@ import { fmtVolume, fmtWeight, step } from '../lib/units'
 import { completedSetCount, estimate1rm, lastPerformance, personalRecords, volumeOf } from '../lib/stats'
 import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types'
 
+/**
+ * Easter egg: roughly 1 in 4 Pull 2 sessions get a nod to "The Kill 2". Seeded
+ * from the start time so it doesn't flicker on every render or reload.
+ */
+function Kill2Banner({ active }: { active: ActiveWorkout }) {
+  const key = `gym.kill2.${active.startedAt}`
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return sessionStorage.getItem(key) === '1'
+    } catch {
+      return false
+    }
+  })
+  const lucky = useMemo(() => {
+    let h = 0
+    for (const c of active.startedAt) h = (h * 31 + c.charCodeAt(0)) >>> 0
+    return h % 4 === 0
+  }, [active.startedAt])
+
+  const name = (active.planDayName ?? active.name).trim().toLowerCase()
+  if (name !== 'pull 2' || !lucky || hidden) return null
+
+  return (
+    <div className="hero animate-pop flex items-center gap-3 rounded-2xl p-4 text-ink-950">
+      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ink-950/15">
+        <Icon name="zap" size={22} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-display text-2xl font-bold uppercase leading-none">Pull 2? This is The Kill 2.</p>
+        <p className="mt-1 text-sm font-semibold">Back for the sequel. Go finish what Pull 1 started.</p>
+      </div>
+      <IconButton
+        icon="x"
+        label="Dismiss"
+        onClick={() => {
+          setHidden(true)
+          try {
+            sessionStorage.setItem(key, '1')
+          } catch {
+            // Fine — it just shows again after a reload.
+          }
+        }}
+        className="text-ink-950 hover:bg-ink-950/10"
+      />
+    </div>
+  )
+}
+
 function emptySet(): WorkoutSet {
   return { weightKg: 0, reps: 0, done: false }
 }
@@ -375,6 +423,8 @@ export function WorkoutActive() {
 
       <RestTimer onReady={onTimerReady} />
       </div>
+
+      <Kill2Banner active={active} />
 
       {active.exercises.length === 0 ? (
         <Card className="flex flex-col items-center gap-3 py-8 text-center">

@@ -1,16 +1,188 @@
 rules_version = '2';
 
-// Every document lives under users/{uid}, so a single ownership check covers
-// the whole app: you can only ever read or write your own subtree. That includes
-// users/{uid}/plans/* and users/{uid}/state/activePlan, so no extra rules are needed.
+// Private data lives under users/{uid} and only its owner can touch it. The
+// friends system adds a few narrow, rule-checked holes on top of that:
+//   - profiles/{uid} + usernames/{name}: public handle lookup for any signed-in user
+//   - users/{uid}/public/*, users/{uid}/activity/*: readable by that user's friends
+//   - users/{uid}/friends/{other}: the accepting friend can write their own entry
+//   - users/{uid}/notifications/*: friends (and pending requesters) can drop one in
+//   - friendRequests/*, challenges/*: shared between the people named in them
+// "X's friend" always means X has you in users/X/friends — X controls who sees X.
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function me() {
+      return request.auth.uid;
+    }
+    // `uid` lists the caller as a friend.
+    function friendOf(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid)/friends/$(me()));
+    }
+    function hasRequestTo(uid) {
+      return exists(/databases/$(database)/documents/friendRequests/$(me() + '_' + uid));
+    }
+    function dayNumber() {
+      return string(int(request.time.toMillis() / 86400000));
+    }
+
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if signedIn() && me() == userId;
 
       match /{document=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if signedIn() && me() == userId;
       }
+
+      // Stats summary + push subscriptions. The push doc is also readable by
+      // someone who has a pending request out to this user, so the request can ping.
+      match /public/{docId} {
+        allow read: if signedIn() && (friendOf(userId) || (docId == 'push' && hasRequestTo(userId)));
+      }
+
+      match /friends/{friendId} {
+        allow read: if signedIn() && me() == friendId;
+        // Accepting userId's request writes yourself into their list.
+        allow create: if signedIn() && me() == friendId
+          && exists(/databases/$(database)/documents/friendRequests/$(userId + '_' + friendId))
+          && request.resource.data.keys().hasOnly(['since'])
+          && request.resource.data.since == request.time;
+        allow delete: if signedIn() && me() == friendId;
+      }
+
+      match /activity/{activityId} {
+        allow read: if signedIn() && friendOf(userId);
+        // Friends may only set or clear their own reaction.
+        allow update: if signedIn() && friendOf(userId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.reactions.diff(resource.data.reactions).affectedKeys().hasOnly([me()])
+          && (!(me() in request.resource.data.reactions)
+            || request.resource.data.reactions[me()] in ['fire', 'strong', 'beast']);
+      }
+
+      match /notifications/{nid} {
+        // The sender can read what they sent — the push endpoint relies on this.
+        allow read: if signedIn() && resource.data.from == me();
+        allow create: if signedIn() && validNotification(userId, nid);
+      }
+    }
+
+    function validNotification(to, nid) {
+      let d = request.resource.data;
+      return to != me()
+        && d.from == me()
+        && d.keys().hasOnly(['type', 'from', 'fromUsername', 'text', 'ref', 'createdAt', 'read'])
+        && d.type is string && d.fromUsername is string && d.fromUsername.size() <= 20
+        && d.read == false
+        && d.createdAt == request.time
+        && (!('text' in d) || (d.text is string && d.text.size() <= 140))
+        && (!('ref' in d) || (d.ref is string && d.ref.size() <= 64))
+        && nid.matches('^' + d.type + '_' + me() + '_[A-Za-z0-9_-]{1,64}$')
+        && (
+          (d.type == 'friend_request' && hasRequestTo(to))
+          // One nudge per friend per (UTC) day: the id is fixed for the day.
+          || (d.type == 'nudge' && friendOf(to) && nid == 'nudge_' + me() + '_' + dayNumber())
+          || (d.type in ['friend_accept', 'kudos', 'workout', 'challenge_invite', 'challenge_join'] && friendOf(to))
+        );
+    }
+
+    match /profiles/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && me() == uid && profileShape()
+        && request.resource.data.joinedAt == request.time
+        && request.resource.data.usernameChangedAt == request.time
+        && request.resource.data.freeChange == true
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid;
+      allow update: if signedIn() && me() == uid && profileShape()
+        && request.resource.data.joinedAt == resource.data.joinedAt
+        && (sameUsername() || validRename(uid));
+    }
+
+    function profileShape() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['username', 'displayName', 'joinedAt', 'usernameChangedAt', 'freeChange'])
+        && d.username is string && d.username.matches('^[a-z0-9_.]{3,20}$')
+        && d.displayName is string && d.displayName.size() <= 40
+        && d.freeChange is bool;
+    }
+    function sameUsername() {
+      let d = request.resource.data;
+      return d.username == resource.data.username
+        && d.usernameChangedAt == resource.data.usernameChangedAt
+        && d.freeChange == resource.data.freeChange;
+    }
+    // One free change after joining, then one every 30 days. The old handle must
+    // be released in the same batch so nobody can hoard names.
+    function validRename(uid) {
+      let d = request.resource.data;
+      return d.username != resource.data.username
+        && d.usernameChangedAt == request.time
+        && d.freeChange == false
+        && (resource.data.freeChange == true
+          || request.time > resource.data.usernameChangedAt + duration.value(30, 'd'))
+        && getAfter(/databases/$(database)/documents/usernames/$(d.username)).data.uid == uid
+        && !existsAfter(/databases/$(database)/documents/usernames/$(resource.data.username));
+    }
+
+    match /usernames/{name} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == me()
+        && getAfter(/databases/$(database)/documents/profiles/$(me())).data.username == name;
+      allow delete: if signedIn() && resource.data.uid == me()
+        && getAfter(/databases/$(database)/documents/profiles/$(me())).data.username != name;
+    }
+
+    match /friendRequests/{rid} {
+      allow read: if signedIn() && (resource.data.from == me() || resource.data.to == me());
+      allow create: if signedIn()
+        && request.resource.data.from == me()
+        && request.resource.data.to != me()
+        && rid == me() + '_' + request.resource.data.to
+        && request.resource.data.keys().hasOnly(['from', 'to', 'createdAt', 'fromUsername', 'fromName', 'toUsername', 'toName'])
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.to));
+      allow delete: if signedIn() && (resource.data.from == me() || resource.data.to == me());
+    }
+
+    match /challenges/{cid} {
+      allow read: if signedIn() && me() in resource.data.members;
+      allow create: if signedIn() && validChallenge();
+      // Members can join, decline and post their own score — nothing else.
+      allow update: if signedIn() && me() in resource.data.members
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scores', 'accepted', 'declined'])
+        && request.resource.data.scores.diff(resource.data.scores).affectedKeys().hasOnly([me()])
+        && (!(me() in request.resource.data.scores) || request.resource.data.scores[me()] is number)
+        && onlyAddsMe(request.resource.data.accepted, resource.data.accepted)
+        && onlyAddsMe(request.resource.data.declined, resource.data.declined);
+      allow delete: if signedIn() && resource.data.creator == me();
+    }
+
+    function onlyAddsMe(next, prev) {
+      return next is list && next.hasAll(prev) && next.toSet().difference(prev.toSet()).hasOnly([me()]);
+    }
+    function memberIsFriend(members, i) {
+      return members.size() <= i || exists(/databases/$(database)/documents/users/$(members[i])/friends/$(me()));
+    }
+    function validChallenge() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['creator', 'members', 'accepted', 'declined', 'metric', 'title', 'startDay', 'endDay', 'createdAt', 'scores'])
+        && d.creator == me()
+        && d.members is list && d.members.size() >= 2 && d.members.size() <= 5
+        && d.members[0] == me()
+        && d.members.toSet().size() == d.members.size()
+        && d.accepted == [me()]
+        && d.declined == []
+        && d.metric in ['workouts', 'days', 'volume', 'sets', 'minutes']
+        && d.title is string && d.title.size() <= 60
+        && d.startDay is string && d.endDay is string
+        && d.createdAt == request.time
+        && d.scores.keys().hasOnly([me()])
+        && memberIsFriend(d.members, 1)
+        && memberIsFriend(d.members, 2)
+        && memberIsFriend(d.members, 3)
+        && memberIsFriend(d.members, 4);
     }
   }
 }

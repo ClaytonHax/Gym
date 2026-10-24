@@ -12,6 +12,8 @@ import {
   SectionHeader,
   Segmented,
 } from '../components/ui'
+import { UsernameCard } from '../components/UsernameCard'
+import { NotificationPrefs, PushToggleCard } from '../components/PushSettings'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useToast } from '../contexts/ToastContext'
@@ -139,6 +141,21 @@ export function Settings() {
             suffix={unit}
             placeholder="—"
           />
+        </Card>
+      </section>
+
+      <section id="username" className="scroll-mt-4">
+        <SectionHeader title="Username" />
+        <UsernameCard />
+      </section>
+
+      <section>
+        <SectionHeader title="Notifications" />
+        <Card className="flex flex-col gap-5">
+          <PushToggleCard />
+          <div className="border-t border-[var(--color-line)] pt-4">
+            <NotificationPrefs />
+          </div>
         </Card>
       </section>
 

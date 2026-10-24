@@ -39,11 +39,14 @@ export function ActivityHeatmap({
   isRestDay,
   variant = 'compact',
   className = '',
+  readOnly = false,
 }: {
   workouts: Parameters<typeof buildHeatmap>[0]
   isRestDay?: (date: string) => boolean
   variant?: 'compact' | 'full'
   className?: string
+  /** Someone else's activity: days show totals but don't link to sessions. */
+  readOnly?: boolean
 }) {
   const { weeks: maxWeeks, cell, gap } = VARIANTS[variant]
   const scroller = useRef<HTMLDivElement>(null)
@@ -173,7 +176,12 @@ export function ActivityHeatmap({
         {selected ? (
           selected.workoutCount > 0 ? (
             <ul className="flex flex-col gap-2">
-              {selected.workouts.map((w) => (
+              {readOnly ? (
+                <li className="card p-3.5 font-semibold">
+                  {selected.workouts.map((w) => w.name).join(', ')}
+                </li>
+              ) : null}
+              {readOnly ? null : selected.workouts.map((w) => (
                 <li key={w.id}>
                   <Link
                     to={`/history/${w.id}`}

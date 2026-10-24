@@ -4,12 +4,16 @@ import { Spinner } from './components/ui'
 import { Icon } from './components/Icon'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { SettingsProvider } from './contexts/SettingsContext'
+import { SocialProvider } from './contexts/SocialContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { firebaseConfigured } from './lib/firebase'
 import { Body } from './pages/Body'
 import { Dashboard } from './pages/Dashboard'
+import { FriendProfile, UserLookup } from './pages/FriendProfile'
+import { Friends } from './pages/Friends'
 import { History } from './pages/History'
 import { Login } from './pages/Login'
+import { Notifications } from './pages/Notifications'
 import { PlanEditor } from './pages/PlanEditor'
 import { Plans } from './pages/Plans'
 import { Progress } from './pages/Progress'
@@ -67,6 +71,7 @@ function Gate() {
   if (!user) return <Login />
 
   return (
+    <SocialProvider>
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
@@ -79,9 +84,14 @@ function Gate() {
         <Route path="/progress" element={<Progress />} />
         <Route path="/body" element={<Body />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/friends" element={<Friends />} />
+        <Route path="/friends/:uid" element={<FriendProfile />} />
+        <Route path="/u/:username" element={<UserLookup />} />
+        <Route path="/notifications" element={<Notifications />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </SocialProvider>
   )
 }
 

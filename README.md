@@ -27,6 +27,18 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 - Body weight chart with a 7-day moving average, body fat %, BMI and goal tracking
 - Every chart has a "View as table" fallback for screen readers
 
+**Friends**
+- Usernames for everyone (auto-assigned on join): one free change, then once every 30 days
+- Find friends by username or share an invite link (`/u/username`); requests, accept/decline
+- Leaderboards against your friends: workouts, active days, volume, sets, time trained and
+  current streak, for this week / this month / all time
+- Head-to-head comparison and activity heatmap on every friend's profile
+- Feed of friends' workouts (last 30 days) with reactions (Fire / Strong / Beast mode)
+- Nudges with preset or custom messages (one per friend per day)
+- Battles: 1v1 or up to 5-person challenges on a metric over 3–30 days, scored automatically
+- Notifications inbox with unread badges, plus Web Push to installed devices (iPhone needs the
+  app added to the Home Screen; there's an illustrated guide). Per-type notification toggles
+
 **Platform**
 - Installable PWA — full-screen, offline-capable, with an add-to-home-screen prompt
 - Offline-first: Firestore persistent cache means sets log fine with no signal and sync later
@@ -63,7 +75,33 @@ users/{uid}/bodylog/{yyyy-mm-dd}  one weigh-in per day — the date is the docum
 users/{uid}/exercises/{id}      custom exercises
 users/{uid}/routines/{id}       saved routines
 users/{uid}/state/activeWorkout the in-progress session, mirrored from localStorage
+
+profiles/{uid}                  public handle: username, displayName, rename cooldown
+usernames/{name}                { uid } — uniqueness lock for usernames
+users/{uid}/friends/{uid}       who can see your public docs
+users/{uid}/public/stats        friend-readable stats summary (daily totals, streak, top lifts)
+users/{uid}/public/push         Web Push subscriptions + notification prefs
+users/{uid}/activity/{id}       friend-readable feed card per recent workout (+ reactions)
+users/{uid}/notifications/{id}  inbox; friends can create, only you can read
+friendRequests/{from_to}        pending requests
+challenges/{id}                 battles; each member writes only their own score
 ```
+
+Everything is enforced in [`firestore.rules`](./firestore.rules) — there's no admin backend.
+
+### Push notifications (free)
+
+Pushes go out from a Vercel serverless function, [`api/push.js`](./api/push.js), using
+standard Web Push (VAPID) — no Firebase Cloud Functions or paid plan needed. The function holds
+no Firebase credentials: it reads Firestore *as the caller* via their ID token, so the security
+rules decide who may push to whom. Set these in Vercel → Environment Variables:
+
+| Variable | Value |
+| --- | --- |
+| `VAPID_PUBLIC_KEY` | must match `VAPID_PUBLIC_KEY` in `src/lib/push.ts` |
+| `VAPID_PRIVATE_KEY` | its private half |
+
+Generate a new pair with `npx web-push generate-vapid-keys` (then update both places).
 
 All weights are stored in **kilograms**; conversion happens only at the display edge.
 

@@ -15,6 +15,8 @@ import {
   StreakBadge,
 } from '../components/ui'
 import { ActivityHeatmap } from '../components/ActivityHeatmap'
+import { FriendsPulse } from '../components/FriendsPulse'
+import { NotificationBell } from '../components/social'
 import { BodyWeightChart } from '../components/LazyCharts'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
@@ -303,6 +305,7 @@ export function Dashboard() {
           </h1>
         </div>
         <div className="flex shrink-0 gap-2">
+        <NotificationBell />
         <Link
           to="/body"
           aria-label="Body weight"
@@ -435,6 +438,8 @@ export function Dashboard() {
       ) : (
         <WeekStrip trainedDays={trainedDays} goal={profile.weeklyGoal} />
       )}
+
+      <FriendsPulse />
 
       <section aria-label="Activity">
         <SectionHeader title="Activity" />

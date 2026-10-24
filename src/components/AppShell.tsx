@@ -4,13 +4,15 @@ import { Icon, type IconName } from './Icon'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { fmtDuration } from '../lib/date'
 import { InstallPrompt } from './InstallPrompt'
+import { SocialSync } from './SocialSync'
+import { useSocial } from '../contexts/SocialContext'
 
 const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean }> = [
   { to: '/', label: 'Home', icon: 'home' },
   { to: '/plans', label: 'Plans', icon: 'layers' },
   { to: '/workout', label: 'Train', icon: 'dumbbell', primary: true },
+  { to: '/friends', label: 'Friends', icon: 'users' },
   { to: '/progress', label: 'Progress', icon: 'trending' },
-  { to: '/history', label: 'History', icon: 'history' },
 ]
 
 function OfflineBanner() {
@@ -76,6 +78,8 @@ function ActiveWorkoutBar() {
 
 export function AppShell() {
   const { pathname } = useLocation()
+  const { incoming, unread } = useSocial()
+  const friendsBadge = incoming.length + unread
 
   // A fresh route should start at the top, like a native screen push.
   useEffect(() => {
@@ -102,6 +106,7 @@ export function AppShell() {
       </main>
 
       <InstallPrompt />
+      <SocialSync />
 
       <nav
         aria-label="Main"
@@ -149,7 +154,15 @@ export function AppShell() {
                           isActive ? 'bg-brand-500/15' : 'bg-transparent'
                         }`}
                       >
-                        <Icon name={tab.icon} size={22} />
+                        <span className="relative">
+                          <Icon name={tab.icon} size={22} />
+                          {tab.to === '/friends' && friendsBadge > 0 ? (
+                            <span className="absolute -right-2 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-rose-600 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[var(--color-surface)]">
+                              {friendsBadge > 9 ? '9+' : friendsBadge}
+                              <span className="sr-only"> new</span>
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
                       <span className="text-[11px] font-bold uppercase tracking-wider">{tab.label}</span>
                     </>

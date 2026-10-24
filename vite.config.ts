@@ -30,6 +30,10 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
+        // Push + notification-click handlers for friend notifications.
+        importScripts: ['push-sw.js'],
+        // Never let the SPA fallback swallow the serverless API.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,

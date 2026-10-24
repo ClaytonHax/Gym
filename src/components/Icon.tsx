@@ -51,6 +51,17 @@ export type IconName =
   | 'grip'
   | 'arrow-right'
   | 'check-circle'
+  | 'users'
+  | 'user-plus'
+  | 'bell'
+  | 'share'
+  | 'send'
+  | 'zap'
+  | 'crown'
+  | 'swords'
+  | 'at'
+  | 'hand'
+  | 'medal'
 
 const PATHS: Record<IconName, string> = {
   dumbbell: 'M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11',
@@ -108,6 +119,22 @@ const PATHS: Record<IconName, string> = {
   grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
   'arrow-right': 'M4 12h16M13 5l7 7-7 7',
   'check-circle': 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12.5l3 3 5-6',
+  users:
+    'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  'user-plus':
+    'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6',
+  bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+  share: 'M4 12v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8M16 6l-4-4-4 4M12 2v13',
+  send: 'M22 2 11 13M22 2l-7 20-4-9-9-4z',
+  zap: 'M13 2 3 14h9l-1 8 10-12h-9z',
+  crown: 'M2 18h20M3 7l4.5 4L12 4l4.5 7L21 7l-2 11H5z',
+  swords:
+    'M14.5 17.5 3 6V3h3l11.5 11.5M13 19l6-6M16 16l4 4M19 21l2-2M9.5 6.5 13 3h3v3l-3.5 3.5M5 14l4 4M7 17l-3 3M3 19l2 2',
+  at: 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8',
+  hand:
+    'M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15',
+  medal:
+    'M7.2 2h9.6l-2.4 6.4M9.6 8.4 7.2 2M12 22a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 18v-4l-1 1',
 }
 
 const FILLED: IconName[] = ['play', 'google']
