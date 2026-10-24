@@ -8,6 +8,7 @@ import { SocialSync } from './SocialSync'
 import { ProfileSetup } from './ProfileSetup'
 import { PublicPlanSeeder } from './plans'
 import { useSocial } from '../contexts/SocialContext'
+import { PlanSyncProvider } from '../contexts/PlanSyncContext'
 
 const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean }> = [
   { to: '/', label: 'Home', icon: 'home' },
@@ -89,6 +90,7 @@ export function AppShell() {
   }, [pathname])
 
   return (
+    <PlanSyncProvider>
     <div className="min-h-dvh">
       <a
         href="#main"
@@ -178,5 +180,6 @@ export function AppShell() {
         </ul>
       </nav>
     </div>
+    </PlanSyncProvider>
   )
 }

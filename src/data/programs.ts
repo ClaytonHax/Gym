@@ -28,7 +28,6 @@ function rx(exerciseId: string, count: number | string[], range: string, restSec
 
 const ABS = (): PlanExercise[] => [
   rx('reverse-crunch', 3, '15-20', 1 * MIN),
-  rx('woodchopper', 3, '10-15', 1 * MIN),
   rx('weighted-crunch', 3, '10-15', 1 * MIN),
   rx('serratus-jab', 3, '10-15', 1 * MIN),
 ]

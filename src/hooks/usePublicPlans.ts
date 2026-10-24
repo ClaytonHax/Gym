@@ -21,6 +21,8 @@ import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { cloneDays, planSummary, templateToPlanDays } from '../lib/plans'
 import type { DayKey, FirestoreTime, Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
+import { PPL_PUBLIC_ID } from '../data/programs'
+import { isoOf } from '../lib/planSync'
 import { clean, usePlans } from './usePlans'
 
 const PAGE = 30
@@ -50,10 +52,16 @@ interface Stream<T> {
   error: boolean
 }
 
-/** Starred plans (set by hand in the console), by starOrder then name. No composite index needed. */
+/**
+ * Starred plans (set by hand in the console), by starOrder then name. No composite
+ * index needed. While nothing is starred the owner's classic PPL stands in, so it is
+ * recommended from day one; callers fall back to the built-in template if that's gone too.
+ */
 export function useRecommendedPlans(): Stream<PublicPlan[]> {
   const { user } = useAuth()
-  const [state, setState] = useState<Stream<PublicPlan[]>>({ data: [], loading: true, error: false })
+  const [starred, setStarred] = useState<Stream<PublicPlan[]>>({ data: [], loading: true, error: false })
+  const [fallback, setFallback] = useState<{ plan: PublicPlan | null; loading: boolean }>({ plan: null, loading: true })
+  const needFallback = !starred.loading && starred.data.length === 0
 
   useEffect(() => {
     if (!user) return
@@ -67,16 +75,28 @@ export function useRecommendedPlans(): Stream<PublicPlan[]> {
               (a.starOrder ?? Number.MAX_SAFE_INTEGER) - (b.starOrder ?? Number.MAX_SAFE_INTEGER) ||
               a.name.localeCompare(b.name)
           )
-        setState({ data, loading: false, error: false })
+        setStarred({ data, loading: false, error: false })
       },
       (err) => {
         console.error('recommended plans listener failed', err)
-        setState({ data: [], loading: false, error: true })
+        setStarred({ data: [], loading: false, error: true })
       }
     )
   }, [user])
 
-  return user ? state : { data: [], loading: false, error: false }
+  useEffect(() => {
+    if (!user || !needFallback) return
+    return onSnapshot(
+      doc(db, 'publicPlans', PPL_PUBLIC_ID),
+      // Shown as recommended even though it isn't starred (yet).
+      (snap) => setFallback({ plan: snap.exists() ? { ...toPublicPlan(snap), starred: true } : null, loading: false }),
+      () => setFallback({ plan: null, loading: false })
+    )
+  }, [user, needFallback])
+
+  if (!user) return { data: [], loading: false, error: false }
+  if (!needFallback) return starred
+  return { data: fallback.plan ? [fallback.plan] : [], loading: fallback.loading, error: false }
 }
 
 export interface ExplorePlans extends Stream<PublicPlan[]> {
@@ -319,7 +339,12 @@ export function usePublicPlanActions(): PublicPlanActions {
         id = await savePlan({
           name: plan.name,
           days: cloneDays(plan.days),
-          sharedFrom: { authorUid: plan.authorUid, publicPlanId: plan.id },
+          sharedFrom: {
+            authorUid: plan.authorUid,
+            publicPlanId: plan.id,
+            // The version this copy matches, so later edits by the author can be synced.
+            syncedAt: isoOf(plan.updatedAt) ?? new Date().toISOString(),
+          },
         })
         // The "used by" count is a nicety; never fail an add over it.
         await updateDoc(doc(db, 'publicPlans', plan.id), { [`usedBy.${u.uid}`]: true }).catch((err) =>

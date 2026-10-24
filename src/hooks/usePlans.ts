@@ -18,7 +18,8 @@ export interface UsePlans {
   upcoming: (n?: number) => ScheduleSlot[]
   isRestDay: ((date: DayKey) => boolean) | undefined
   savePlan: (p: Pick<Plan, 'name' | 'days' | 'templateId' | 'sharedFrom'>) => Promise<string>
-  updatePlan: (id: string, p: Pick<Plan, 'name' | 'days'>) => Promise<void>
+  /** `customized` marks a followed copy as the user's own, which stops automatic updates. */
+  updatePlan: (id: string, p: Pick<Plan, 'name' | 'days'>, opts?: { customized?: boolean }) => Promise<void>
   /** Clears the active state too when the plan was active. */
   deletePlan: (id: string) => Promise<void>
   duplicatePlan: (id: string) => Promise<string>
@@ -138,11 +139,16 @@ export function usePlans(): UsePlans {
   )
 
   const updatePlan = useCallback(
-    async (id: string, p: Pick<Plan, 'name' | 'days'>) => {
+    async (id: string, p: Pick<Plan, 'name' | 'days'>, opts: { customized?: boolean } = {}) => {
       const u = requireUser()
       await updateDoc(
         doc(db, 'users', u.uid, 'plans', id),
-        clean({ name: p.name, days: p.days, updatedAt: new Date().toISOString() })
+        clean({
+          name: p.name,
+          days: p.days,
+          updatedAt: new Date().toISOString(),
+          ...(opts.customized ? { 'sharedFrom.customized': true } : {}),
+        })
       )
     },
     [requireUser]

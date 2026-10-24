@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { doc, getDocFromServer, serverTimestamp, setDoc } from 'firebase/firestore'
+import { collection, doc, getDocFromServer, getDocsFromServer, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { Icon } from './Icon'
 import { Avatar, displayOf } from './social'
@@ -10,11 +10,13 @@ import { useProfile } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { getTemplate, OWNER_UID, PLAN_TEMPLATES, PPL_PUBLIC_ID, PPL_TEMPLATE_ID } from '../data/programs'
+import { usePlanSync } from '../contexts/PlanSyncContext'
+import { hasExercise, pickOwnerPplPlan, samePlanContent, stripExercise, type SyncAction } from '../lib/planSync'
 import { clean } from '../hooks/usePlans'
 import { taglineOf, usePublicPlanActions, usedByCount, useRecommendedPlans } from '../hooks/usePublicPlans'
 import { estimateMinutes, setCountOf } from '../lib/plans'
 import { fmtDuration } from '../lib/date'
-import type { PlanDay, PublicPlan } from '../types'
+import type { Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
 
 /** Workout days filled orange, rest days outlined — the same chips the template cards use. */
 export function DayChips({ days, className = '' }: { days: PlanDay[]; className?: string }) {
@@ -259,10 +261,158 @@ export function PublicPlanList({
   )
 }
 
+
+/** Followed-copy pill: green while it auto-updates, amber once it's the user's own, muted if the source is gone. */
+export function FollowPill({ plan, action }: { plan: Plan; action: SyncAction }) {
+  const from = plan.sharedFrom
+  const { handle } = displayOf(useProfile(from?.authorUid))
+  if (!from) return null
+  const who = handle || 'author'
+  const base = 'mt-1 inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold'
+  if (action === 'orphaned') {
+    return (
+      <span className={`${base} bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]`}>
+        <Icon name="eye-off" size={14} className="shrink-0" />
+        <span className="truncate">No longer published</span>
+      </span>
+    )
+  }
+  if (from.syncedAt && !from.customized) {
+    return (
+      <span className={`${base} bg-go-500/15 text-go-400`}>
+        <Icon name="rotate" size={14} className="shrink-0" />
+        <span className="truncate">Following {who} · auto-updates</span>
+      </span>
+    )
+  }
+  return (
+    <span className={`${base} bg-amber-500/15 text-amber-400`}>
+      <Icon name="pencil" size={14} className="shrink-0" />
+      <span className="truncate">{from.customized ? 'Customised' : `Copy of ${who}`}</span>
+    </span>
+  )
+}
+
+/** Shown in the editor on an untouched followed copy, before the first change. */
+export function StopsUpdatesNotice({ authorUid }: { authorUid: string }) {
+  const { handle } = displayOf(useProfile(authorUid))
+  return (
+    <p className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm font-semibold text-amber-400">
+      <Icon name="rotate" size={16} className="mt-0.5 shrink-0" />
+      <span className="min-w-0">Editing will stop automatic updates from {handle || 'the author'}</span>
+    </p>
+  )
+}
+
+/** "Author updated this plan": the copy is customised (or predates sync), so the user decides. */
+export function PlanUpdateCard({ plan }: { plan: Plan }) {
+  const toast = useToast()
+  const { accept, keep, sourceOf } = usePlanSync()
+  const [busy, setBusy] = useState<'update' | 'keep' | null>(null)
+  const { handle } = displayOf(useProfile(plan.sharedFrom?.authorUid))
+  const src = plan.sharedFrom ? sourceOf(plan.sharedFrom.publicPlanId) : undefined
+
+  async function run(kind: 'update' | 'keep') {
+    setBusy(kind)
+    try {
+      await (kind === 'update' ? accept(plan.id) : keep(plan.id))
+      toast(kind === 'update' ? 'Plan updated.' : 'Keeping your version.')
+    } catch {
+      toast('Could not update the plan. Try again.', 'error')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div role="status" className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+      <p className="flex items-center gap-2 text-sm font-bold text-amber-400">
+        <Icon name="rotate" size={16} className="shrink-0" />
+        Author updated this plan
+      </p>
+      <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+        {handle || 'The author'} changed {src ? `“${src.name}”` : 'it'}. Update replaces your copy with their version;
+        Keep mine hides this.
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button variant="go" size="sm" loading={busy === 'update'} disabled={busy !== null} onClick={() => void run('update')}>
+          Update
+        </Button>
+        <Button variant="secondary" size="sm" loading={busy === 'keep'} disabled={busy !== null} onClick={() => void run('keep')}>
+          Keep mine
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+interface RecommendedCardProps {
+  name: string
+  tagline?: string
+  days: PlanDay[]
+  /** Author of a library plan; undefined for the built-in template. */
+  authorUid?: string
+  usedBy?: Pick<PublicPlan, 'usedBy'>
+  busy: boolean
+  disabled: boolean
+  onStart: () => void
+  /** Opens the preview sheet (library plans) or the editor (templates). */
+  onPreview?: () => void
+  previewTo?: string
+}
+
+/** The top recommended plan as a bold block: who made it, what's in it, one big button. */
+function RecommendedCard({
+  name,
+  tagline,
+  days,
+  authorUid,
+  usedBy,
+  busy,
+  disabled,
+  onStart,
+  onPreview,
+  previewTo,
+}: RecommendedCardProps) {
+  const body = (
+    <>
+      <span className="num-display block text-3xl">{name}</span>
+      {tagline ? <span className="tabular mt-0.5 block text-sm text-[var(--color-fg-muted)]">{tagline}</span> : null}
+      <DayChips days={days} className="mt-2" />
+    </>
+  )
+  const bodyClass = 'block min-h-11 w-full text-left'
+  return (
+    <div className="card-accent flex flex-col gap-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <Badge className="gap-1 bg-brand-500/15 text-brand-400">
+          <Icon name="star" size={12} />
+          Recommended
+        </Badge>
+        {usedBy ? <UsedBy plan={usedBy} /> : null}
+      </div>
+      {previewTo ? (
+        <Link to={previewTo} className={bodyClass}>
+          {body}
+        </Link>
+      ) : (
+        <button type="button" onClick={onPreview} aria-label={`Preview ${name}`} className={bodyClass}>
+          {body}
+        </button>
+      )}
+      {authorUid ? <AuthorLink uid={authorUid} /> : null}
+      <Button full variant="go" size="lg" icon="play" loading={busy} disabled={disabled} onClick={onStart}>
+        Start this plan
+      </Button>
+    </div>
+  )
+}
+
 /**
- * The top starred plans as compact "Start this plan" rows, for the moments a
- * user has no active plan. Falls back to the built-in templates when nothing is
- * starred or the library can't be reached; `fallback={false}` renders nothing then.
+ * The recommended plans for the moments a user has no active plan: the top one as a
+ * hero card, further ones as compact rows. Falls back to the built-in templates when
+ * nothing is recommended or the library can't be reached; `fallback={false}` renders
+ * nothing then.
  */
 export function StarterPlans({
   max = 3,
@@ -297,67 +447,161 @@ export function StarterPlans({
 
   const row = 'card-accent flex items-center gap-2 p-3'
   const text = 'min-h-11 min-w-0 flex-1 text-left'
+  const [heroPlan, ...morePlans] = starred
+  const [heroTemplate, ...moreTemplates] = templates as Array<PlanTemplate | undefined>
 
   return (
-    <section aria-label={title ?? 'Recommended plans'} className="flex flex-col gap-2">
+    <section aria-label={title ?? 'Recommended plans'} className="flex flex-col gap-3">
       {title ? <h2 className="text-lg font-semibold">{title}</h2> : null}
       {loading ? (
-        <Skeleton className="h-[76px]" />
+        <Skeleton className="h-[264px]" />
       ) : (
-        <ul className="flex flex-col gap-2">
-          {starred.map((p) => (
-            <li key={p.id} className={row}>
-              <button type="button" onClick={() => setOpen(p)} className={text} aria-label={`Preview ${p.name}`}>
-                <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-400">
-                  <Icon name="star" size={12} />
-                  Recommended
-                </span>
-                <span className="block truncate font-display text-xl font-semibold leading-tight">{p.name}</span>
-                <span className="block truncate text-xs text-[var(--color-fg-muted)]">
-                  {p.tagline ? `${p.tagline} · ` : ''}
-                  <ByLine uid={p.authorUid} />
-                </span>
-              </button>
-              <Button
-                variant="go"
-                size="sm"
-                loading={busy === p.id}
-                disabled={busy !== null}
-                onClick={() => void start(p.id, p.name, () => adopt(p, { activate: true }))}
-                className="shrink-0"
-              >
-                Start this plan
-              </Button>
-            </li>
-          ))}
-          {templates.map((t) => (
-            <li key={t.id} className={row}>
-              <Link to={`/plans/new?template=${t.id}`} className={`${text} flex flex-col justify-center`}>
-                <span className="block truncate font-display text-xl font-semibold leading-tight">{t.name}</span>
-                <span className="block truncate text-xs text-[var(--color-fg-muted)]">{t.tagline}</span>
-              </Link>
-              <Button
-                variant="go"
-                size="sm"
-                loading={busy === t.id}
-                disabled={busy !== null}
-                onClick={() => void start(t.id, t.name, () => startTemplate(t))}
-                className="shrink-0"
-              >
-                Start this plan
-              </Button>
-            </li>
-          ))}
-        </ul>
+        <>
+          {heroPlan ? (
+            <RecommendedCard
+              name={heroPlan.name}
+              tagline={heroPlan.tagline}
+              days={heroPlan.days}
+              authorUid={heroPlan.authorUid}
+              usedBy={heroPlan}
+              busy={busy === heroPlan.id}
+              disabled={busy !== null}
+              onPreview={() => setOpen(heroPlan)}
+              onStart={() => void start(heroPlan.id, heroPlan.name, () => adopt(heroPlan, { activate: true }))}
+            />
+          ) : null}
+          {heroTemplate ? (
+            <RecommendedCard
+              name={heroTemplate.name}
+              tagline={heroTemplate.tagline}
+              days={heroTemplate.days}
+              busy={busy === heroTemplate.id}
+              disabled={busy !== null}
+              previewTo={`/plans/new?template=${heroTemplate.id}`}
+              onStart={() => void start(heroTemplate.id, heroTemplate.name, () => startTemplate(heroTemplate))}
+            />
+          ) : null}
+          {morePlans.length + moreTemplates.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {morePlans.map((p) => (
+                <li key={p.id} className={row}>
+                  <button type="button" onClick={() => setOpen(p)} className={text} aria-label={`Preview ${p.name}`}>
+                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-400">
+                      <Icon name="star" size={12} />
+                      Recommended
+                    </span>
+                    <span className="block truncate font-display text-xl font-semibold leading-tight">{p.name}</span>
+                    <span className="block truncate text-xs text-[var(--color-fg-muted)]">
+                      {p.tagline ? `${p.tagline} · ` : ''}
+                      <ByLine uid={p.authorUid} />
+                    </span>
+                  </button>
+                  <Button
+                    variant="go"
+                    size="sm"
+                    loading={busy === p.id}
+                    disabled={busy !== null}
+                    onClick={() => void start(p.id, p.name, () => adopt(p, { activate: true }))}
+                    className="shrink-0"
+                  >
+                    Start this plan
+                  </Button>
+                </li>
+              ))}
+              {moreTemplates.map((t) =>
+                t ? (
+                  <li key={t.id} className={row}>
+                    <Link to={`/plans/new?template=${t.id}`} className={`${text} flex flex-col justify-center`}>
+                      <span className="block truncate font-display text-xl font-semibold leading-tight">{t.name}</span>
+                      <span className="block truncate text-xs text-[var(--color-fg-muted)]">{t.tagline}</span>
+                    </Link>
+                    <Button
+                      variant="go"
+                      size="sm"
+                      loading={busy === t.id}
+                      disabled={busy !== null}
+                      onClick={() => void start(t.id, t.name, () => startTemplate(t))}
+                      className="shrink-0"
+                    >
+                      Start this plan
+                    </Button>
+                  </li>
+                ) : null
+              )}
+            </ul>
+          ) : null}
+        </>
       )}
       <PublicPlanSheet plan={open} onClose={() => setOpen(null)} />
     </section>
   )
 }
 
+/** A published plan must have 1-14 days (firestore.rules) to be written. */
+const publishable = (days: PlanDay[]) => days.length >= 1 && days.length <= 14
+
 /**
- * Headless: the first time @ClaytonHax opens the app, publish the built-in
- * Push / Pull / Legs plan under his account so he can edit it in-app.
+ * One idempotent pass that makes the owner's classic PPL the published one. Every read
+ * goes to the server (an empty offline cache must not look like "missing"), and a plan
+ * that is already linked is reused, so repeats and other devices never duplicate links.
+ */
+async function seedOwnerPpl(uid: string): Promise<void> {
+  const template = getTemplate(PPL_TEMPLATE_ID)
+  if (!template) return
+  const pubRef = doc(db, 'publicPlans', PPL_PUBLIC_ID)
+  const [plansSnap, pubSnap] = await Promise.all([
+    getDocsFromServer(collection(db, 'users', uid, 'plans')),
+    getDocFromServer(pubRef),
+  ])
+  const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Plan)
+  const pub = pubSnap.exists() ? (pubSnap.data() as { name: string; days: PlanDay[] }) : null
+  const mine = pickOwnerPplPlan(plans, {
+    templateId: PPL_TEMPLATE_ID,
+    publicId: PPL_PUBLIC_ID,
+    avoidExerciseId: 'woodchopper',
+  })
+
+  const create = (name: string, days: PlanDay[], description?: string) =>
+    setDoc(pubRef, {
+      authorUid: uid,
+      name,
+      ...(description ? { description } : {}),
+      tagline: taglineOf(days),
+      days: clean(days),
+      usedBy: {},
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  const update = (name: string, days: PlanDay[]) =>
+    updateDoc(pubRef, { name, tagline: taglineOf(days), days: clean(days), updatedAt: serverTimestamp() })
+
+  if (mine && publishable(mine.days)) {
+    // His own plan becomes the published one.
+    const linked = mine.publishedId === PPL_PUBLIC_ID
+    // The recommended PPL never includes the woodchopper; drop it from his copy
+    // too on first link so the private and published plans stay identical.
+    const days = linked ? mine.days : stripExercise(mine.days, 'woodchopper')
+    if (!linked) {
+      await updateDoc(doc(db, 'users', uid, 'plans', mine.id), {
+        publishedId: PPL_PUBLIC_ID,
+        ...(hasExercise(mine.days, 'woodchopper') ? { days: clean(days) } : {}),
+      })
+    }
+    const name = mine.name.trim().slice(0, 60) || template.name
+    if (!pub) await create(name, days)
+    // Already linked => author saves keep the doc current; only a fresh link overwrites it.
+    else if (!linked && !samePlanContent(pub, { name, days })) await update(name, days)
+    return
+  }
+
+  if (!pub) await create(template.name, template.days, template.description)
+  else if (hasExercise(pub.days, 'woodchopper')) await update(pub.name, stripExercise(pub.days, 'woodchopper'))
+}
+
+/**
+ * Headless: whenever @ClaytonHax opens the app (once per session), link his own
+ * Push / Pull / Legs plan to the public PPL doc and publish it, or seed it from the
+ * built-in template when he has none.
  */
 export function PublicPlanSeeder() {
   const { user } = useAuth()
@@ -366,29 +610,20 @@ export function PublicPlanSeeder() {
   useEffect(() => {
     if (!user || user.uid !== OWNER_UID || seeded.current) return
     seeded.current = true
-    const template = getTemplate(PPL_TEMPLATE_ID)
-    if (!template) return
-    const ref = doc(db, 'publicPlans', PPL_PUBLIC_ID)
+    const uid = user.uid
+    let running = false
 
     async function seed() {
+      if (running) return
+      running = true
       try {
-        // Ask the server: an empty offline cache must not look like "missing".
-        const snap = await getDocFromServer(ref)
-        if (snap.exists()) return
-        await setDoc(ref, {
-          authorUid: OWNER_UID,
-          name: template!.name,
-          description: template!.description,
-          tagline: taglineOf(template!.days),
-          days: clean(template!.days),
-          usedBy: {},
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        })
+        await seedOwnerPpl(uid)
       } catch (err) {
         // Offline (or rules not deployed yet): try again when the connection returns.
         console.warn('could not seed the PPL plan', err)
         window.addEventListener('online', () => void seed(), { once: true })
+      } finally {
+        running = false
       }
     }
     void seed()

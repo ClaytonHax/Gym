@@ -1,14 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
-import { AuthorLink, PublicPlanList, StarterPlans } from '../components/plans'
+import { AuthorLink, FollowPill, PlanUpdateCard, PublicPlanList, StarterPlans } from '../components/plans'
 import { Badge, Button, ConfirmSheet, EmptyState, IconButton, PageTitle, Skeleton } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
+import { usePlanSync } from '../contexts/PlanSyncContext'
 import { PLAN_TEMPLATES, PPL_PUBLIC_ID } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
 import { useAuthorPlans, usePublicPlanActions, usedByCount } from '../hooks/usePublicPlans'
 import { parseDayKey } from '../lib/date'
+import { samePlanContent } from '../lib/planSync'
 import { planSummary } from '../lib/plans'
 import type { Plan, PublicPlan, ScheduleSlot } from '../types'
 
@@ -86,6 +88,7 @@ export function Plans() {
   const { user } = useAuth()
   const { publish, updatePublished, unpublish, removePublic, stopUsing } = usePublicPlanActions()
   const published = useAuthorPlans(user?.uid)
+  const { actionFor } = usePlanSync()
   const [pending, setPending] = useState<Pending | null>(null)
 
   async function run(action: () => Promise<unknown>, done: string) {
@@ -357,7 +360,9 @@ export function Plans() {
             {[...(activePlan ? [activePlan] : []), ...others].map((p) => {
               const isActive = p.id === activePlan?.id
               const pub = p.publishedId ? publicOf.get(p.publishedId) : undefined
-              const stale = !!pub?.updatedAt && Date.parse(p.updatedAt) > pub.updatedAt.toMillis()
+              // Saves publish automatically; this only shows if that failed (compared by content, not clocks).
+              const stale = !!pub && !samePlanContent(p, pub)
+              const action = actionFor(p)
               return (
                 <li key={p.id} className={`card p-4 ${isActive ? 'border-brand-500/60' : ''}`}>
                   <div className="flex items-start gap-2">
@@ -371,12 +376,17 @@ export function Plans() {
                         <p className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-go-400">
                           <Icon name="check-circle" size={14} className="shrink-0" />
                           <span className="tabular">
-                            Published{pub ? ` · used by ${usedByCount(pub)}` : ''}
+                            {pub ? `Live · ${usedByCount(pub)} following` : 'Published'}
                             {stale ? ' · changes not published' : ''}
                           </span>
                         </p>
                       ) : null}
-                      {p.sharedFrom ? <AuthorLink uid={p.sharedFrom.authorUid} label="By" /> : null}
+                      {p.sharedFrom ? (
+                        <>
+                          <AuthorLink uid={p.sharedFrom.authorUid} label="By" />
+                          <FollowPill plan={p} action={action} />
+                        </>
+                      ) : null}
                     </div>
                     <div className="-mr-2 -mt-2 flex">
                       <IconButton
@@ -402,6 +412,7 @@ export function Plans() {
                       />
                     </div>
                   </div>
+                  {action === 'prompt' ? <PlanUpdateCard plan={p} /> : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {!isActive ? (
                       <Button

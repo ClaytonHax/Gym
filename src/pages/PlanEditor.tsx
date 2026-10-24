@@ -8,6 +8,7 @@ import { useToast } from '../contexts/ToastContext'
 import { getTemplate } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
 import { usePublicPlan, usePublicPlanActions } from '../hooks/usePublicPlans'
+import { StopsUpdatesNotice } from '../components/plans'
 import { dayKey } from '../lib/date'
 import {
   blankPlanDays,
@@ -164,11 +165,24 @@ export function PlanEditor() {
         return
       }
       let planId = saved?.id ?? ''
-      if (saved) await updatePlan(saved.id, { name, days })
+      // Editing a followed copy makes it the user's own: automatic updates stop.
+      const customizes = !!saved?.sharedFrom && !saved.publishedId && dirty
+      if (saved) await updatePlan(saved.id, { name, days }, { customized: customizes })
       else planId = await savePlan({ name, days, ...(draft!.templateId ? { templateId: draft!.templateId } : {}) })
       if (activate) await activatePlan(planId, startDate)
       baseline.current = JSON.stringify({ name: draft!.name, days: draft!.days })
-      toast(activate ? 'Added to your plan.' : 'Plan saved.')
+      // Published plans go live in the same save. The private save stands if this fails;
+      // the Plans page keeps an "Update published" button as the retry.
+      let publishFailed = false
+      if (saved?.publishedId) {
+        try {
+          await savePublic(saved.publishedId, { name, days })
+        } catch {
+          publishFailed = true
+        }
+      }
+      if (publishFailed) toast('Saved, but the published copy could not be updated. Retry from Plans.', 'error')
+      else toast(activate ? 'Added to your plan.' : saved?.publishedId ? 'Saved and live for everyone.' : 'Plan saved.')
       navigate(activate ? '/' : '/plans', { replace: true })
     } catch {
       toast('Could not save the plan.', 'error')
@@ -190,6 +204,10 @@ export function PlanEditor() {
           </p>
         </div>
       </header>
+
+      {saved?.sharedFrom && !saved.publishedId && !saved.sharedFrom.customized ? (
+        <StopsUpdatesNotice authorUid={saved.sharedFrom.authorUid} />
+      ) : null}
 
       <label className="flex flex-col gap-1.5 text-sm font-semibold">
         Plan name
@@ -320,8 +338,8 @@ export function PlanEditor() {
           {isPublic ? (
             <>
               <p className="text-sm text-[var(--color-fg-muted)]">
-                This updates the plan in the public library for everyone who views it. Copies people already
-                added are not changed.
+                This updates the plan in the public library. People following it get your changes
+                automatically, unless they customised their copy.
               </p>
               <Button full variant="go" size="lg" icon="check" loading={saving} onClick={() => commit(false)}>
                 Save changes
@@ -329,6 +347,12 @@ export function PlanEditor() {
             </>
           ) : (
             <>
+              {saved?.publishedId ? (
+                <p className="flex items-start gap-2 text-sm font-semibold text-go-400">
+                  <Icon name="share" size={16} className="mt-0.5 shrink-0" />
+                  Edits go live for everyone
+                </p>
+              ) : null}
               <label className="flex items-center justify-between gap-3 text-sm font-semibold">
                 Start date
                 <input

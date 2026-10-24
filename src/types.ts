@@ -142,8 +142,12 @@ export interface Plan {
   templateId?: string
   /** Id of this plan's copy in the public library (publicPlans/{id}), once published. */
   publishedId?: string
-  /** Set when the plan was copied from someone's published plan. */
-  sharedFrom?: { authorUid: string; publicPlanId: string }
+  /**
+   * Set when the plan was copied from someone's published plan. `syncedAt` is the
+   * source's updatedAt (ISO) this copy matches (missing on copies made before sync
+   * existed); `customized` stops automatic updates once the user edits their copy.
+   */
+  sharedFrom?: { authorUid: string; publicPlanId: string; syncedAt?: string; customized?: boolean }
   days: PlanDay[]
   createdAt: string
   updatedAt: string
