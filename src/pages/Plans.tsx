@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
+import { AuthorLink, PublicPlanList, StarterPlans } from '../components/plans'
 import { Badge, Button, ConfirmSheet, EmptyState, IconButton, PageTitle, Skeleton } from '../components/ui'
+import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { PLAN_TEMPLATES } from '../data/programs'
+import { PLAN_TEMPLATES, PPL_PUBLIC_ID } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
+import { useAuthorPlans, usePublicPlanActions, usedByCount } from '../hooks/usePublicPlans'
 import { parseDayKey } from '../lib/date'
 import { planSummary } from '../lib/plans'
-import type { Plan, ScheduleSlot } from '../types'
+import type { Plan, PublicPlan, ScheduleSlot } from '../types'
 
 function weekdayInitial(slot: ScheduleSlot): string {
   return parseDayKey(slot.date).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1)
@@ -55,7 +58,14 @@ function WeekStrip({ slots }: { slots: ScheduleSlot[] }) {
   )
 }
 
-type Pending = { kind: 'delete'; plan: Plan } | { kind: 'delay' } | { kind: 'skip' } | { kind: 'deactivate' }
+type Pending =
+  | { kind: 'delete'; plan: Plan }
+  | { kind: 'delay' }
+  | { kind: 'skip' }
+  | { kind: 'deactivate' }
+  | { kind: 'publish'; plan: Plan }
+  | { kind: 'unpublish'; plan: Plan }
+  | { kind: 'remove'; plan: PublicPlan }
 
 export function Plans() {
   const navigate = useNavigate()
@@ -73,14 +83,18 @@ export function Plans() {
     delayToday,
     skipToday,
   } = usePlans()
+  const { user } = useAuth()
+  const { publish, updatePublished, unpublish, removePublic, stopUsing } = usePublicPlanActions()
+  const published = useAuthorPlans(user?.uid)
   const [pending, setPending] = useState<Pending | null>(null)
 
   async function run(action: () => Promise<unknown>, done: string) {
     try {
       await action()
       toast(done)
-    } catch {
-      toast('Something went wrong. Try again.', 'error')
+    } catch (err) {
+      // Our own validation errors are readable; Firebase errors carry a `code` and aren't.
+      toast(err instanceof Error && !('code' in err) ? err.message : 'Something went wrong. Try again.', 'error')
     } finally {
       setPending(null)
     }
@@ -91,9 +105,18 @@ export function Plans() {
       case 'delete':
         return {
           title: `Delete “${pending.plan.name}”?`,
-          message: 'This plan will be removed. Workouts you already logged are kept.',
+          message: pending.plan.publishedId
+            ? 'This plan will be removed and unpublished from the library. Workouts you already logged are kept.'
+            : 'This plan will be removed. Workouts you already logged are kept.',
           label: 'Delete',
-          go: () => run(() => deletePlan(pending.plan.id), 'Plan deleted.'),
+          tone: 'danger' as const,
+          go: () =>
+            run(async () => {
+              const { publishedId, sharedFrom } = pending.plan
+              if (publishedId) await unpublish(pending.plan.id)
+              if (sharedFrom) void stopUsing(sharedFrom.publicPlanId)
+              await deletePlan(pending.plan.id)
+            }, 'Plan deleted.'),
         }
       case 'delay':
         return {
@@ -101,6 +124,7 @@ export function Plans() {
           message:
             'Today becomes a rest day and your whole schedule shifts back one day. Today’s workout moves to tomorrow.',
           label: 'Delay',
+          tone: 'primary' as const,
           go: () => run(delayToday, 'Schedule shifted by a day.'),
         }
       case 'skip':
@@ -109,6 +133,7 @@ export function Plans() {
           message:
             'Today becomes a rest day and today’s workout is dropped. The rest of your schedule stays exactly as it was.',
           label: 'Skip',
+          tone: 'primary' as const,
           go: () => run(skipToday, 'Today skipped.'),
         }
       case 'deactivate':
@@ -116,7 +141,33 @@ export function Plans() {
           title: 'Deactivate this plan?',
           message: 'Your plan stays saved, but nothing will be scheduled until you activate one again.',
           label: 'Deactivate',
+          tone: 'danger' as const,
           go: () => run(deactivatePlan, 'Plan deactivated.'),
+        }
+      case 'publish':
+        return {
+          title: `Publish “${pending.plan.name}”?`,
+          message:
+            'Anyone using the app can find this plan, see your @username as the author and add a copy. Your logged workouts stay private.',
+          label: 'Publish',
+          tone: 'primary' as const,
+          go: () => run(() => publish(pending.plan.id), 'Plan published.'),
+        }
+      case 'unpublish':
+        return {
+          title: `Unpublish “${pending.plan.name}”?`,
+          message: 'It disappears from the library. Copies people already added keep working.',
+          label: 'Unpublish',
+          tone: 'danger' as const,
+          go: () => run(() => unpublish(pending.plan.id), 'Plan unpublished.'),
+        }
+      case 'remove':
+        return {
+          title: `Remove “${pending.plan.name}”?`,
+          message: 'It disappears from the library. Copies people already added keep working.',
+          label: 'Remove',
+          tone: 'danger' as const,
+          go: () => run(() => removePublic(pending.plan.id), 'Removed from the library.'),
         }
       default:
         return null
@@ -124,10 +175,16 @@ export function Plans() {
   })()
 
   const others = plans.filter((p) => p.id !== activePlan?.id)
+  const publicOf = new Map(published.data.map((p) => [p.id, p]))
+  // Library plans I wrote that have no private copy (e.g. the built-in PPL).
+  const linked = new Set(plans.map((p) => p.publishedId))
+  const libraryOnly = loading ? [] : published.data.filter((p) => !linked.has(p.id))
 
   return (
     <div className="animate-rise flex flex-col gap-6">
       <PageTitle title="Plans" subtitle="Pick a template, make it yours, and let the schedule run itself." />
+
+      {!loading && !activePlan ? <StarterPlans title="Recommended" fallback={false} /> : null}
 
       <section aria-label="Active plan">
         {loading ? (
@@ -200,6 +257,22 @@ export function Plans() {
           />
         )}
       </section>
+
+      <Link
+        to="/plans/explore"
+        className="card flex min-h-14 items-center gap-3 p-4 transition-colors duration-200 hover:border-brand-500/60"
+      >
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
+          <Icon name="search" size={22} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-display text-xl font-semibold">Explore plans</span>
+          <span className="block text-sm text-[var(--color-fg-muted)]">
+            Browse plans from other lifters and add one.
+          </span>
+        </span>
+        <Icon name="chevron-right" size={20} className="text-[var(--color-fg-muted)]" />
+      </Link>
 
       <section aria-label="Templates">
         <h2 className="mb-3 text-lg font-semibold">Start a plan</h2>
@@ -283,6 +356,8 @@ export function Plans() {
           <ul className="flex flex-col gap-3">
             {[...(activePlan ? [activePlan] : []), ...others].map((p) => {
               const isActive = p.id === activePlan?.id
+              const pub = p.publishedId ? publicOf.get(p.publishedId) : undefined
+              const stale = !!pub?.updatedAt && Date.parse(p.updatedAt) > pub.updatedAt.toMillis()
               return (
                 <li key={p.id} className={`card p-4 ${isActive ? 'border-brand-500/60' : ''}`}>
                   <div className="flex items-start gap-2">
@@ -292,6 +367,16 @@ export function Plans() {
                         {isActive ? <Badge color="#22c55e">Active</Badge> : null}
                       </div>
                       <p className="tabular text-xs text-[var(--color-fg-muted)]">{summaryText(p)}</p>
+                      {p.publishedId ? (
+                        <p className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-go-400">
+                          <Icon name="check-circle" size={14} className="shrink-0" />
+                          <span className="tabular">
+                            Published{pub ? ` · used by ${usedByCount(pub)}` : ''}
+                            {stale ? ' · changes not published' : ''}
+                          </span>
+                        </p>
+                      ) : null}
+                      {p.sharedFrom ? <AuthorLink uid={p.sharedFrom.authorUid} label="By" /> : null}
                     </div>
                     <div className="-mr-2 -mt-2 flex">
                       <IconButton
@@ -317,16 +402,43 @@ export function Plans() {
                       />
                     </div>
                   </div>
-                  {!isActive ? (
-                    <Button
-                      variant="go"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => void run(() => activatePlan(p.id), `${p.name} is now your plan.`)}
-                    >
-                      Make active
-                    </Button>
-                  ) : null}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {!isActive ? (
+                      <Button
+                        variant="go"
+                        size="sm"
+                        onClick={() => void run(() => activatePlan(p.id), `${p.name} is now your plan.`)}
+                      >
+                        Make active
+                      </Button>
+                    ) : null}
+                    {p.publishedId ? (
+                      <>
+                        {stale ? (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="rotate"
+                            onClick={() => void run(() => updatePublished(p.id), 'Published plan updated.')}
+                          >
+                            Update published
+                          </Button>
+                        ) : null}
+                        <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'unpublish', plan: p })}>
+                          Unpublish
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        icon="share"
+                        onClick={() => setPending({ kind: 'publish', plan: p })}
+                      >
+                        Publish
+                      </Button>
+                    )}
+                  </div>
                 </li>
               )
             })}
@@ -334,12 +446,34 @@ export function Plans() {
         )}
       </section>
 
+      {libraryOnly.length > 0 ? (
+        <section aria-label="Published by you">
+          <h2 className="mb-3 text-lg font-semibold">Published by you</h2>
+          <PublicPlanList
+            plans={libraryOnly}
+            showAuthor={false}
+            extra={(p) =>
+              p.id === PPL_PUBLIC_ID ? null : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-1 text-rose-400 hover:text-rose-400"
+                  onClick={() => setPending({ kind: 'remove', plan: p })}
+                >
+                  Remove from library
+                </Button>
+              )
+            }
+          />
+        </section>
+      ) : null}
+
       <ConfirmSheet
         open={confirm !== null}
         title={confirm?.title ?? ''}
         message={confirm?.message ?? ''}
         confirmLabel={confirm?.label}
-        tone={confirm?.label === 'Delay' || confirm?.label === 'Skip' ? 'primary' : 'danger'}
+        tone={confirm?.tone ?? 'danger'}
         onCancel={() => setPending(null)}
         onConfirm={() => void confirm?.go()}
       />

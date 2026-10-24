@@ -17,7 +17,7 @@ export interface UsePlans {
   /** Today plus the next n - 1 days; [] with no active plan. */
   upcoming: (n?: number) => ScheduleSlot[]
   isRestDay: ((date: DayKey) => boolean) | undefined
-  savePlan: (p: Pick<Plan, 'name' | 'days' | 'templateId'>) => Promise<string>
+  savePlan: (p: Pick<Plan, 'name' | 'days' | 'templateId' | 'sharedFrom'>) => Promise<string>
   updatePlan: (id: string, p: Pick<Plan, 'name' | 'days'>) => Promise<void>
   /** Clears the active state too when the plan was active. */
   deletePlan: (id: string) => Promise<void>
@@ -29,7 +29,7 @@ export interface UsePlans {
 }
 
 /** Firestore rejects undefined fields; JSON round-trip drops them (all data here is plain JSON). */
-function clean<T>(value: T): T {
+export function clean<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
@@ -125,7 +125,7 @@ export function usePlans(): UsePlans {
   }, [user])
 
   const savePlan = useCallback(
-    async (p: Pick<Plan, 'name' | 'days' | 'templateId'>) => {
+    async (p: Pick<Plan, 'name' | 'days' | 'templateId' | 'sharedFrom'>) => {
       const u = requireUser()
       const now = new Date().toISOString()
       const ref = await addDoc(

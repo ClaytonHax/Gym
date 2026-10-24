@@ -3,9 +3,11 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ExerciseListEditor } from '../components/ExerciseListEditor'
 import { Icon } from '../components/Icon'
 import { Button, ConfirmSheet, IconButton, Segmented, Sheet, Skeleton } from '../components/ui'
+import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { getTemplate } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
+import { usePublicPlan, usePublicPlanActions } from '../hooks/usePublicPlans'
 import { dayKey } from '../lib/date'
 import {
   blankPlanDays,
@@ -24,16 +26,25 @@ interface Draft {
   days: PlanDay[]
 }
 
-/** Create a plan from a template or blank, or edit a saved one, then add it to my plan. */
+/**
+ * Create a plan from a template or blank, or edit a saved one, then add it to my plan.
+ * At /plans/public/:pid/edit it edits a plan I published in the library directly.
+ */
 export function PlanEditor() {
-  const { id } = useParams()
+  const { id, pid } = useParams()
+  const { user } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const toast = useToast()
   const { plans, loading, activePlan, savePlan, updatePlan, activatePlan } = usePlans()
 
-  const isNew = !id || id === 'new'
-  const saved = isNew ? null : (plans.find((p) => p.id === id) ?? null)
+  const { savePublic } = usePublicPlanActions()
+  const { plan: publicPlan, loading: publicLoading } = usePublicPlan(pid)
+
+  const isPublic = !!pid
+  const isNew = !isPublic && (!id || id === 'new')
+  const saved = isNew || isPublic ? null : (plans.find((p) => p.id === id) ?? null)
+  const canEditPublic = !!publicPlan && publicPlan.authorUid === user?.uid
 
   const [draft, setDraft] = useState<Draft | null>(null)
   const [startDate, setStartDate] = useState(dayKey())
@@ -51,13 +62,15 @@ export function PlanEditor() {
       seed = template
         ? { name: template.name, templateId: template.id, days: templateToPlanDays(template) }
         : { name: 'My plan', days: blankPlanDays() }
+    } else if (isPublic) {
+      if (canEditPublic && publicPlan) seed = { name: publicPlan.name, days: cloneDays(publicPlan.days) }
     } else if (saved) {
       seed = { name: saved.name, templateId: saved.templateId, days: cloneDays(saved.days) }
     }
     if (!seed) return
     baseline.current = JSON.stringify({ name: seed.name, days: seed.days })
     setDraft(seed)
-  }, [draft, isNew, saved, params])
+  }, [draft, isNew, isPublic, canEditPublic, publicPlan, saved, params])
 
   const dirty = useMemo(
     () => (draft ? JSON.stringify({ name: draft.name, days: draft.days }) !== baseline.current : false),
@@ -76,10 +89,13 @@ export function PlanEditor() {
   }, [dirty])
 
   if (!draft) {
-    if (!isNew && !loading && !saved) {
+    const missing = isPublic ? !publicLoading && !canEditPublic : !isNew && !loading && !saved
+    if (missing) {
       return (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <p className="font-semibold">That plan no longer exists.</p>
+          <p className="font-semibold">
+            {isPublic && publicPlan ? 'Only the author can edit this plan.' : 'That plan no longer exists.'}
+          </p>
           <Button onClick={() => navigate('/plans', { replace: true })}>Back to plans</Button>
         </div>
       )
@@ -140,6 +156,13 @@ export function PlanEditor() {
     const name = draft!.name.trim()
     const days = draft!.days.map((d) => ({ ...d, name: d.name.trim() || d.name }))
     try {
+      if (isPublic && pid) {
+        await savePublic(pid, { name, days })
+        baseline.current = JSON.stringify({ name: draft!.name, days: draft!.days })
+        toast('Published plan updated.')
+        navigate('/plans', { replace: true })
+        return
+      }
       let planId = saved?.id ?? ''
       if (saved) await updatePlan(saved.id, { name, days })
       else planId = await savePlan({ name, days, ...(draft!.templateId ? { templateId: draft!.templateId } : {}) })
@@ -161,7 +184,7 @@ export function PlanEditor() {
       <header className="flex items-center gap-1">
         <IconButton icon="chevron-left" label="Back" onClick={leave} className="-ml-2" />
         <div className="min-w-0 flex-1">
-          <h1 className="num-display truncate text-3xl">{isNew ? 'New plan' : 'Edit plan'}</h1>
+          <h1 className="num-display truncate text-3xl">{isNew ? 'New plan' : isPublic ? 'Edit published plan' : 'Edit plan'}</h1>
           <p className="tabular text-xs text-[var(--color-fg-muted)]">
             {length}-day cycle · {workouts} workouts · {rests} rest
           </p>
@@ -176,6 +199,7 @@ export function PlanEditor() {
           value={draft.name}
           onChange={(e) => patchDraft({ name: e.target.value })}
           placeholder="e.g. Push / Pull / Legs"
+          maxLength={60}
           className="min-h-12 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-base outline-none focus:border-brand-500"
         />
       </label>
@@ -293,33 +317,42 @@ export function PlanEditor() {
 
       <div className="card-accent">
         <div className="flex flex-col gap-2 p-4">
-          <label className="flex items-center justify-between gap-3 text-sm font-semibold">
-            Start date
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => e.target.value && setStartDate(e.target.value)}
-              className="min-h-11 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 outline-none focus:border-brand-500"
-            />
-          </label>
-          {isNew ? (
-            <Button full variant="go" size="lg" icon="check" loading={saving} onClick={() => commit(true)}>
-              Add to my plan
-            </Button>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" size="lg" loading={saving} onClick={() => commit(false)}>
+          {isPublic ? (
+            <>
+              <p className="text-sm text-[var(--color-fg-muted)]">
+                This updates the plan in the public library for everyone who views it. Copies people already
+                added are not changed.
+              </p>
+              <Button full variant="go" size="lg" icon="check" loading={saving} onClick={() => commit(false)}>
                 Save changes
               </Button>
-              <Button
-                variant="go"
-                size="lg"
-                loading={saving}
-                onClick={() => commit(true)}
-              >
-                {isActive ? 'Save and restart' : 'Make active'}
-              </Button>
-            </div>
+            </>
+          ) : (
+            <>
+              <label className="flex items-center justify-between gap-3 text-sm font-semibold">
+                Start date
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => e.target.value && setStartDate(e.target.value)}
+                  className="min-h-11 rounded-lg border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 outline-none focus:border-brand-500"
+                />
+              </label>
+              {isNew ? (
+                <Button full variant="go" size="lg" icon="check" loading={saving} onClick={() => commit(true)}>
+                  Add to my plan
+                </Button>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <Button variant="secondary" size="lg" loading={saving} onClick={() => commit(false)}>
+                    Save changes
+                  </Button>
+                  <Button variant="go" size="lg" loading={saving} onClick={() => commit(true)}>
+                    {isActive ? 'Save and restart' : 'Make active'}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

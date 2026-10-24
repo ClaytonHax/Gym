@@ -467,7 +467,8 @@ export function Friends() {
   const { profileOf } = useSocial()
 
   const myScoreFor = useCallback(
-    (c: Challenge) => challengeScore(workouts, c.metric, c.startDay, c.endDay),
+    // Photo battles start from zero: only workouts with a proof count.
+    (c: Challenge) => (c.verify === 'photo' ? 0 : challengeScore(workouts, c.metric, c.startDay, c.endDay)),
     [workouts]
   )
   const myScoreForNew = useCallback(

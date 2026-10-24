@@ -62,6 +62,8 @@ export type IconName =
   | 'at'
   | 'hand'
   | 'medal'
+  | 'camera'
+  | 'image'
 
 const PATHS: Record<IconName, string> = {
   dumbbell: 'M6.5 6.5v11M3.5 9v6M17.5 6.5v11M20.5 9v6M6.5 12h11',
@@ -135,6 +137,10 @@ const PATHS: Record<IconName, string> = {
     'M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15',
   medal:
     'M7.2 2h9.6l-2.4 6.4M9.6 8.4 7.2 2M12 22a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 18v-4l-1 1',
+  camera:
+    'M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  image:
+    'M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 11a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM21 15l-3.09-3.09a2 2 0 0 0-2.82 0L6 21',
 }
 
 const FILLED: IconName[] = ['play', 'google']

@@ -26,6 +26,7 @@ import { useBodyLog } from '../hooks/useBodyLog'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { usePlans } from '../hooks/usePlans'
+import { StarterPlans } from '../components/plans'
 import { estimateMinutes, setCountOf, startPlanDay } from '../lib/plans'
 import { computeStreaks, workoutsByDay } from '../lib/streaks'
 import { fmtVolume, fmtWeight } from '../lib/units'
@@ -349,7 +350,10 @@ export function Dashboard() {
             <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
               Choose a plan and the app tells you what to train every day, rest days included.
             </p>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4">
+              <StarterPlans />
+            </div>
+            <div className="mt-3 flex gap-2">
               <Button size="lg" icon="layers" onClick={() => navigate('/plans')} className="flex-1 whitespace-nowrap">
                 Browse plans
               </Button>

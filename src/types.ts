@@ -140,9 +140,35 @@ export interface Plan {
   id: string
   name: string
   templateId?: string
+  /** Id of this plan's copy in the public library (publicPlans/{id}), once published. */
+  publishedId?: string
+  /** Set when the plan was copied from someone's published plan. */
+  sharedFrom?: { authorUid: string; publicPlanId: string }
   days: PlanDay[]
   createdAt: string
   updatedAt: string
+}
+
+/** The slice of a Firestore Timestamp we read; null while a server timestamp is pending. */
+export type FirestoreTime = { toMillis(): number } | null
+
+/**
+ * publicPlans/{id}. Authors are identified by uid only — usernames are always
+ * resolved live from the profile. `starred`/`starOrder` are set by hand in the console.
+ */
+export interface PublicPlan {
+  id: string
+  authorUid: string
+  name: string
+  description?: string
+  tagline?: string
+  days: PlanDay[]
+  createdAt: FirestoreTime
+  updatedAt: FirestoreTime
+  /** uid -> true for everyone who added it to their plans. */
+  usedBy: Record<string, true>
+  starred?: boolean
+  starOrder?: number
 }
 
 /** A built-in, read-only plan the user copies and customises. */

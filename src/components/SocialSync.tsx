@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { usePlans } from '../hooks/usePlans'
+import { publishMyProofs } from '../hooks/useChallengeProofs'
 import { computeStreaks } from '../lib/streaks'
 import { addDays, dayKey } from '../lib/date'
 import { activityFor, buildPublicStats, challengeScore } from '../lib/social'
@@ -156,17 +157,60 @@ export function SocialSync() {
     return () => window.clearTimeout(t)
   }, [uid, ready, me, workouts, notifyFriends, profile.unit])
 
+  // Photo battles only count workouts with one of your proofs, so listen to
+  // your own proofs in every live one (a week of grace after it ends).
+  const [proofIds, setProofIds] = useState<Record<string, string[]>>({})
+  const photoKey = useMemo(() => {
+    if (!uid) return ''
+    const graceEnd = dayKey(addDays(new Date(), -7))
+    return challenges
+      .filter((c) => c.verify === 'photo' && c.accepted.includes(uid) && c.endDay >= graceEnd)
+      .map((c) => c.id)
+      .sort()
+      .join(',')
+  }, [uid, challenges])
+
+  useEffect(() => {
+    if (!uid || !photoKey) {
+      setProofIds({})
+      return
+    }
+    const ids = photoKey.split(',')
+    const unsubs = ids.map((cid) =>
+      onSnapshot(
+        query(collection(db, 'challenges', cid, 'proofs'), where('uid', '==', uid)),
+        (snap) => {
+          const list = snap.docs.map((d) => d.data().workoutId as string)
+          publishMyProofs(cid, list)
+          setProofIds((prev) => ({ ...prev, [cid]: list }))
+        },
+        (err) => console.warn('proofs listener failed', err)
+      )
+    )
+    return () => {
+      unsubs.forEach((u) => u())
+      ids.forEach((cid) => publishMyProofs(cid, null))
+    }
+  }, [uid, photoKey])
+
   // Your score in every challenge you've joined, until a week after it ends.
   useEffect(() => {
     if (!uid || !ready) return
     const graceEnd = dayKey(addDays(new Date(), -7))
     for (const c of challenges) {
       if (!c.accepted.includes(uid) || c.endDay < graceEnd) continue
-      const score = challengeScore(workouts, c.metric, c.startDay, c.endDay)
+      let allowed: Set<string> | undefined
+      if (c.verify === 'photo') {
+        // Wait for the proofs so a slow load never posts a false zero.
+        const list = proofIds[c.id]
+        if (!list) continue
+        allowed = new Set(list)
+      }
+      const score = challengeScore(workouts, c.metric, c.startDay, c.endDay, allowed)
       if (c.scores[uid] === score) continue
       updateDoc(doc(db, 'challenges', c.id), { [`scores.${uid}`]: score }).catch((err) => console.warn('score sync failed', err))
     }
-  }, [uid, ready, challenges, workouts])
+  }, [uid, ready, challenges, workouts, proofIds])
 
   return null
 }

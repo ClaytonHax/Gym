@@ -11,20 +11,26 @@ import {
   Spinner,
 } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
+import { PhotoCapture } from '../components/proofs'
 import { PlateCalculator } from '../components/PlateCalculator'
 import { StartScreen } from './StartScreen'
 import { RestTimer, type RestTimerHandle } from '../components/RestTimer'
 import { SetRow } from '../components/SetRow'
+import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
+import { useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { useRoutines } from '../hooks/useRoutines'
 import { useWorkouts } from '../hooks/useWorkouts'
+import { inBattleRange, postProof } from '../hooks/useChallengeProofs'
 import { MUSCLE_COLORS } from '../data/exercises'
-import { fmtClock, fmtDuration } from '../lib/date'
+import { dayKey, fmtClock, fmtDuration } from '../lib/date'
+import type { PhotoSvg } from '../lib/photoSvg'
+import { challengeState } from '../lib/social'
 import { fmtVolume, fmtWeight, step } from '../lib/units'
 import { completedSetCount, estimate1rm, lastPerformance, personalRecords, volumeOf } from '../lib/stats'
-import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types'
+import type { ActiveWorkout, Exercise, Workout, WorkoutExercise, WorkoutSet } from '../types'
 
 /**
  * Easter egg: roughly 1 in 4 Pull 2 sessions get a nod to "The Kill 2". Seeded
@@ -123,6 +129,8 @@ export function WorkoutActive() {
   const { profile } = useSettings()
   const unit = profile.unit
   const { active, save, hydrated } = useActiveWorkout()
+  const { user } = useAuth()
+  const { challenges } = useSocial()
   const { workouts, saveWorkout } = useWorkouts()
   const { saveRoutine } = useRoutines()
 
@@ -133,6 +141,7 @@ export function WorkoutActive() {
   const [renaming, setRenaming] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [proofPhoto, setProofPhoto] = useState<PhotoSvg | null>(null)
   const [saveAsRoutine, setSaveAsRoutine] = useState(false)
   const [platesFor, setPlatesFor] = useState<number | null>(null)
   const timerRef = useRef<RestTimerHandle | null>(null)
@@ -288,6 +297,20 @@ export function WorkoutActive() {
     })
   }
 
+  // Live photo battles this session counts toward (by the day it started).
+  const proofBattles = useMemo(() => {
+    if (!active || !user) return []
+    const day = dayKey(new Date(active.startedAt))
+    return challenges.filter(
+      (c) =>
+        c.verify === 'photo' &&
+        c.accepted.includes(user.uid) &&
+        challengeState(c) === 'active' &&
+        day >= c.startDay &&
+        day <= c.endDay
+    )
+  }, [challenges, active, user])
+
   async function finish() {
     if (!active) return
     setSaving(true)
@@ -309,7 +332,7 @@ export function WorkoutActive() {
         return
       }
 
-      const id = await saveWorkout({
+      const draft = {
         name: active.name.trim() || defaultName(),
         startedAt: active.startedAt,
         finishedAt: new Date().toISOString(),
@@ -323,7 +346,28 @@ export function WorkoutActive() {
           planDayName: active.planDayName,
           planCycle: active.planCycle,
         }),
-      })
+      }
+      const id = await saveWorkout(draft)
+      // Proofs are best effort: the workout is already safe, so never block on them.
+      if (proofPhoto && user && proofBattles.length > 0) {
+        const saved: Workout = {
+          ...draft,
+          id,
+          totalVolumeKg: volumeOf(exercises),
+          setCount: completedSetCount(exercises),
+        }
+        const targets = proofBattles.filter((c) => inBattleRange(c, saved))
+        Promise.allSettled(targets.map((c) => postProof(c, user.uid, saved, proofPhoto))).then((results) => {
+          const failed = results.filter((r) => r.status === 'rejected').length
+          if (failed > 0) {
+            toast(
+              `Workout saved, but ${failed === targets.length ? 'the photo' : `${failed} proof${failed === 1 ? '' : 's'}`} couldn’t be added. Add it from the battle.`,
+              'error'
+            )
+          }
+        })
+      }
+      setProofPhoto(null)
       if (saveAsRoutine) {
         await saveRoutine({
           name: active.name.trim() || defaultName(),
@@ -683,6 +727,18 @@ export function WorkoutActive() {
             </div>
           ))}
         </dl>
+        {proofBattles.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-[var(--color-line)] p-3">
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <Icon name="camera" size={16} className="text-go-400" />
+              Add proof for {proofBattles.length} {proofBattles.length === 1 ? 'battle' : 'battles'}
+            </p>
+            <p className="mb-3 mt-0.5 text-xs text-[var(--color-fg-muted)]">
+              {proofBattles.map((c) => c.title).join(' · ')}. Without a photo this workout won’t count there.
+            </p>
+            <PhotoCapture value={proofPhoto} onChange={setProofPhoto} />
+          </div>
+        ) : null}
         <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
           <input
             type="checkbox"

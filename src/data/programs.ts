@@ -115,6 +115,11 @@ const PPL_DAYS: PlanDay[] = [
 
 export const PPL_TEMPLATE_ID = 'ppl-8'
 
+/** The built-in PPL plan lives in the public library under this id, authored by the owner. */
+export const PPL_PUBLIC_ID = 'ppl-8day'
+/** @ClaytonHax — firestore.rules only lets this uid create PPL_PUBLIC_ID. */
+export const OWNER_UID = 't2MZUOISXMcg4fZuoX5ZeqgTK2x2'
+
 export const PLAN_TEMPLATES: PlanTemplate[] = [
   {
     id: PPL_TEMPLATE_ID,

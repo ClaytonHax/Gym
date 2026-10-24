@@ -30,6 +30,8 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useProfile, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useFeed } from '../hooks/useFeed'
+import { useAuthorPlans } from '../hooks/usePublicPlans'
+import { PublicPlanList } from '../components/plans'
 import { addDays, dayKey } from '../lib/date'
 import { fmtWeight } from '../lib/units'
 import {
@@ -161,6 +163,7 @@ export function FriendProfile() {
   const [challenging, setChallenging] = useState(false)
   const [confirmUnfriend, setConfirmUnfriend] = useState(false)
   const friendNow = isFriend(friendUid)
+  const authored = useAuthorPlans(friendUid)
   const { items, loading: feedLoading } = useFeed(friendNow ? [friendUid] : [], 10)
 
   useEffect(() => {
@@ -303,6 +306,23 @@ export function FriendProfile() {
               ) : null}
             </section>
           ) : null}
+
+          <section aria-label="Plans">
+            <SectionHeader title="Plans" />
+            {authored.loading ? (
+              <Skeleton className="h-36" />
+            ) : authored.error ? (
+              <Card>
+                <p className="text-sm text-[var(--color-fg-muted)]">Couldn’t load their plans right now.</p>
+              </Card>
+            ) : authored.data.length === 0 ? (
+              <Card>
+                <p className="text-sm text-[var(--color-fg-muted)]">No published plans yet.</p>
+              </Card>
+            ) : (
+              <PublicPlanList plans={authored.data} showAuthor={false} />
+            )}
+          </section>
 
           <section aria-label="Recent workouts">
             <SectionHeader title="Recent workouts" />

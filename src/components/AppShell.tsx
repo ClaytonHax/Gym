@@ -6,6 +6,7 @@ import { fmtDuration } from '../lib/date'
 import { InstallPrompt } from './InstallPrompt'
 import { SocialSync } from './SocialSync'
 import { ProfileSetup } from './ProfileSetup'
+import { PublicPlanSeeder } from './plans'
 import { useSocial } from '../contexts/SocialContext'
 
 const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean }> = [
@@ -109,6 +110,7 @@ export function AppShell() {
       <InstallPrompt />
       <SocialSync />
       <ProfileSetup />
+      <PublicPlanSeeder />
 
       <nav
         aria-label="Main"

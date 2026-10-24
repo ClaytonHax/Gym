@@ -9,6 +9,7 @@ import { ToastProvider } from './contexts/ToastContext'
 import { firebaseConfigured } from './lib/firebase'
 import { Body } from './pages/Body'
 import { Dashboard } from './pages/Dashboard'
+import { ExplorePlans } from './pages/ExplorePlans'
 import { FriendProfile, UserLookup } from './pages/FriendProfile'
 import { Friends } from './pages/Friends'
 import { History } from './pages/History'
@@ -83,6 +84,8 @@ function Gate() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/plans/new" element={<PlanEditor />} />
+        <Route path="/plans/explore" element={<ExplorePlans />} />
+        <Route path="/plans/public/:pid/edit" element={<PlanEditor />} />
         <Route path="/plans/:id" element={<PlanEditor />} />
         <Route path="/workout" element={<WorkoutActive />} />
         <Route path="/history" element={<History />} />

@@ -104,7 +104,27 @@ export interface Challenge {
   endDay: string
   createdAt: string
   scores: Record<string, number>
+  /** 'photo': only workouts with one of your proofs count. Immutable. */
+  verify?: 'none' | 'photo'
 }
+
+/** challenges/{cid}/proofs/{uid}_{workoutId} — a photo (as a tiny SVG) for one workout. */
+export interface Proof {
+  id: string
+  uid: string
+  workoutId: string
+  /** yyyy-mm-dd, local day of the workout. */
+  day: string
+  workoutName: string
+  value: number
+  svg: string
+  w: number
+  h: number
+  caption?: string
+  createdAt: string
+}
+
+export const proofId = (uid: string, workoutId: string) => `${uid}_${workoutId}`
 
 export interface Friend {
   uid: string
@@ -312,11 +332,29 @@ export function metricValue(s: PublicStats | undefined, metric: BoardMetric, per
           : t.minutes
 }
 
-/** A challenge score straight from your own workouts (inclusive day range). */
-export function challengeScore(workouts: Workout[], metric: ChallengeMetric, startDay: string, endDay: string): number {
+/** What one workout contributes to a challenge score (days: 1, the day dedupes). */
+export function workoutValue(w: Workout, metric: ChallengeMetric): number {
+  if (metric === 'workouts' || metric === 'days') return 1
+  if (metric === 'sets') return w.setCount
+  if (metric === 'volume') return Math.round(w.totalVolumeKg)
+  return Math.round(w.durationSec / 60)
+}
+
+/**
+ * A challenge score straight from your own workouts (inclusive day range).
+ * `allowed` limits it to those workout ids — photo battles pass your proven ones.
+ */
+export function challengeScore(
+  workouts: Workout[],
+  metric: ChallengeMetric,
+  startDay: string,
+  endDay: string,
+  allowed?: ReadonlySet<string>
+): number {
   const days = new Set<string>()
   let total = 0
   for (const w of workouts) {
+    if (allowed && !allowed.has(w.id)) continue
     const key = dayKey(new Date(w.startedAt))
     if (key < startDay || key > endDay) continue
     if (metric === 'workouts') total++

@@ -91,6 +91,7 @@ interface SocialValue {
     days: number
     members: string[]
     myScore: number
+    verify?: 'none' | 'photo'
   }) => Promise<void>
   joinChallenge: (c: Challenge, myScore: number) => Promise<void>
   declineChallenge: (c: Challenge) => Promise<void>
@@ -616,7 +617,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   )
 
   const createChallenge = useCallback<SocialValue['createChallenge']>(
-    async ({ title, metric, days, members, myScore }) => {
+    async ({ title, metric, days, members, myScore, verify }) => {
       const uid = needUid()
       const start = new Date()
       const end = new Date()
@@ -632,6 +633,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         endDay: fmtDay(end),
         createdAt: serverTimestamp(),
         scores: { [uid]: myScore },
+        ...(verify === 'photo' ? { verify } : {}),
       })
       for (const m of members) {
         notifyQuietly(m, 'challenge_invite', ref.id, { text: `${title} · ${days} days` })

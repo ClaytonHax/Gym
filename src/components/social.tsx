@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
-import { Button, Field, IconButton, Segmented, Sheet, Spinner } from './ui'
+import { Badge, Button, Field, IconButton, Segmented, Sheet, Spinner } from './ui'
+import { ProofSheet, ProofWall } from './proofs'
 import { useAuth } from '../contexts/AuthContext'
 import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
+import { useChallengeProofs, useVerifiedIds } from '../hooks/useChallengeProofs'
 import { useUnit } from '../contexts/SettingsContext'
 import { fmtDuration } from '../lib/date'
 import { fmtVolume } from '../lib/units'
@@ -224,6 +226,7 @@ export function ActivityCard({
   const myReaction = user ? item.reactions[user.uid] : undefined
   const { name, handle } = displayOf(profile)
   const [pending, setPending] = useState<Reaction | null>(null)
+  const verified = useVerifiedIds().has(item.id)
 
   const counts = useMemo(() => {
     const c: Record<Reaction, number> = { fire: 0, strong: 0, beast: 0 }
@@ -279,6 +282,12 @@ export function ActivityCard({
           <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-brand-500 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-ink-950">
             <Icon name="trophy" size={12} />
             {item.prs} PR{item.prs === 1 ? '' : 's'}
+          </span>
+        ) : null}
+        {verified ? (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-go-500/15 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-go-400">
+            <Icon name="camera" size={12} />
+            Verified
           </span>
         ) : null}
       </div>
@@ -531,10 +540,14 @@ export function NewChallengeSheet({
   const [picked, setPicked] = useState<string[]>([])
   const [metric, setMetric] = useState<ChallengeMetric>('workouts')
   const [days, setDays] = useState<(typeof DURATIONS)[number]['value']>('7')
+  const [verify, setVerify] = useState<'none' | 'photo'>('none')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (open) setPicked(preselect ? [preselect] : [])
+    if (open) {
+      setPicked(preselect ? [preselect] : [])
+      setVerify('none')
+    }
   }, [open, preselect])
 
   const title = `Most ${METRICS[metric].label.toLowerCase()}`
@@ -544,7 +557,7 @@ export function NewChallengeSheet({
     setSaving(true)
     try {
       const n = Number(days)
-      await createChallenge({ title, metric, days: n, members: picked, myScore: myScoreFor(metric, n) })
+      await createChallenge({ title, metric, days: n, members: picked, myScore: verify === 'photo' ? 0 : myScoreFor(metric, n), verify })
       toast(`Challenge sent to ${picked.length} friend${picked.length === 1 ? '' : 's'}.`)
       onClose()
     } catch {
@@ -595,6 +608,26 @@ export function NewChallengeSheet({
           </p>
           <Segmented label="Challenge length" value={days} onChange={setDays} options={[...DURATIONS]} />
           <p className="mt-1.5 text-xs text-[var(--color-fg-muted)]">Starts today. Today’s workouts count.</p>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+            Verification
+          </p>
+          <Segmented
+            label="Verification"
+            value={verify}
+            onChange={setVerify}
+            options={[
+              { value: 'none', label: 'Honor system' },
+              { value: 'photo', label: 'Photo proof' },
+            ]}
+          />
+          <p className="mt-1.5 text-xs text-[var(--color-fg-muted)]">
+            {verify === 'photo'
+              ? 'Every workout needs a photo to count. Everyone in the battle can see them.'
+              : 'Scores come straight from your logged workouts.'}
+          </p>
         </div>
 
         <div>
@@ -660,9 +693,20 @@ export function ChallengeCard({
   const toast = useToast()
   const unit = useUnit()
   const [busy, setBusy] = useState(false)
+  const [proofOpen, setProofOpen] = useState(false)
+  const [wallOpen, setWallOpen] = useState(false)
   const uid = user?.uid ?? ''
   const state = challengeState(c)
   const invited = !c.accepted.includes(uid) && !c.declined.includes(uid)
+  const photo = c.verify === 'photo'
+  const joined = c.accepted.includes(uid)
+  // Only joined players stream the (large) proofs, and they're shared with the wall and sheet.
+  const { proofs } = useChallengeProofs(c.id, photo && joined)
+  const verifiedBy = useMemo(() => {
+    const n = new Map<string, number>()
+    for (const p of proofs) n.set(p.uid, (n.get(p.uid) ?? 0) + 1)
+    return n
+  }, [proofs])
 
   const nameOf = (id: string) =>
     id === uid ? 'You' : (profileOf(id)?.username ?? 'player')
@@ -715,6 +759,12 @@ export function ChallengeCard({
             {status}
           </p>
           <h3 className="mt-0.5 font-display text-2xl font-bold leading-tight">{c.title}</h3>
+          {photo ? (
+            <Badge className="mt-1 gap-1 bg-go-500/15 text-go-400">
+              <Icon name="camera" size={12} />
+              Photo proof
+            </Badge>
+          ) : null}
           <p className="text-xs text-[var(--color-fg-muted)]">
             {new Date(`${c.startDay}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} –{' '}
             {new Date(`${c.endDay}T12:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
@@ -743,6 +793,11 @@ export function ChallengeCard({
                 <span className="flex min-w-0 items-center gap-1 truncate text-sm font-semibold">
                   {p.uid === leader?.uid && !tied ? <Icon name="crown" size={14} className="shrink-0 text-amber-400" /> : null}
                   {p.uid === uid ? 'You' : `@${nameOf(p.uid)}`}
+                  {photo && p.joined && joined ? (
+                    <span className="tabular shrink-0 text-xs font-normal text-[var(--color-fg-muted)]">
+                      · {verifiedBy.get(p.uid) ?? 0} verified
+                    </span>
+                  ) : null}
                 </span>
                 <span className="tabular shrink-0 text-sm font-bold">
                   {p.joined ? fmtMetric(c.metric, p.score, unit) : 'Invited'}
@@ -758,6 +813,33 @@ export function ChallengeCard({
           </li>
         ))}
       </ol>
+
+      {photo && joined ? (
+        <div className="mt-4 flex gap-2">
+          {state === 'active' ? (
+            <Button variant="go" full icon="camera" onClick={() => setProofOpen(true)}>
+              Add proof
+            </Button>
+          ) : null}
+          <Button variant="secondary" full icon="image" onClick={() => setWallOpen(true)}>
+            Proof wall
+          </Button>
+        </div>
+      ) : null}
+
+      {photo && joined ? (
+        <>
+          <ProofSheet c={c} open={proofOpen} onClose={() => setProofOpen(false)} fmt={(v) => fmtMetric(c.metric, v, unit)} />
+          <ProofWall
+            c={c}
+            open={wallOpen}
+            onClose={() => setWallOpen(false)}
+            nameOf={nameOf}
+            fmt={(v) => fmtMetric(c.metric, v, unit)}
+            metricLabel={METRICS[c.metric].label}
+          />
+        </>
+      ) : null}
 
       {invited && state !== 'finished' ? (
         <div className="mt-4 flex gap-2">

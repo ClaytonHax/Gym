@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { RoutineBuilder } from '../components/RoutineBuilder'
-import { Button, IconButton, Sheet } from '../components/ui'
+import { StarterPlans } from '../components/plans'
+import { Button, IconButton, Sheet, Skeleton } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
 import { useRoutines } from '../hooks/useRoutines'
 import { usePlans } from '../hooks/usePlans'
@@ -76,7 +77,7 @@ function PlanCard({
 /** The Train tab when nothing is in progress: pick a program, a routine, or go freestyle. */
 export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void }) {
   const toast = useToast()
-  const { activePlan, activeState, today } = usePlans()
+  const { activePlan, activeState, today, loading: plansLoading } = usePlans()
   const { routines, deleteRoutine } = useRoutines()
   const [anywayOpen, setAnywayOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -120,19 +121,24 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
       </header>
 
       <section aria-label="Today">
-        {!activePlan || !today ? (
-          <Link to="/plans" className="card-accent flex min-h-14 items-center gap-3 p-4">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
-              <Icon name="layers" size={22} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block font-display text-xl font-semibold">Follow a training plan</span>
-              <span className="block text-sm text-[var(--color-fg-muted)]">
-                Push / Pull / Legs or build your own, with a schedule that runs itself.
+        {plansLoading ? (
+          <Skeleton className="h-[76px]" />
+        ) : !activePlan || !today ? (
+          <div className="flex flex-col gap-3">
+            <StarterPlans />
+            <Link to="/plans" className="card-accent flex min-h-14 items-center gap-3 p-4">
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
+                <Icon name="layers" size={22} />
               </span>
-            </span>
-            <Icon name="chevron-right" size={20} className="shrink-0 text-[var(--color-fg-muted)]" />
-          </Link>
+              <span className="min-w-0 flex-1">
+                <span className="block font-display text-xl font-semibold">Follow a training plan</span>
+                <span className="block text-sm text-[var(--color-fg-muted)]">
+                  Browse plans or build your own, with a schedule that runs itself.
+                </span>
+              </span>
+              <Icon name="chevron-right" size={20} className="shrink-0 text-[var(--color-fg-muted)]" />
+            </Link>
+          </div>
         ) : isWorkoutToday && todayDay ? (
           <div className="card-accent overflow-hidden">
             <div className="p-4 pb-3">
