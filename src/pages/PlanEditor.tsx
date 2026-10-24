@@ -183,7 +183,7 @@ export function PlanEditor() {
       }
       if (publishFailed) toast('Saved, but the published copy could not be updated. Retry from Plans.', 'error')
       else toast(activate ? 'Added to your plan.' : saved?.publishedId ? 'Saved and live for everyone.' : 'Plan saved.')
-      navigate(activate ? '/' : '/plans', { replace: true })
+      navigate(activate ? '/' : saved ? `/plans/view/${saved.id}` : '/plans', { replace: true })
     } catch {
       toast('Could not save the plan.', 'error')
     } finally {

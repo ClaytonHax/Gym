@@ -126,7 +126,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
         ) : !activePlan || !today ? (
           <div className="flex flex-col gap-3">
             <StarterPlans />
-            <Link to="/plans" className="card-accent flex min-h-14 items-center gap-3 p-4">
+            <Link to="/plans/library" className="card-accent flex min-h-14 items-center gap-3 p-4">
               <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
                 <Icon name="layers" size={22} />
               </span>

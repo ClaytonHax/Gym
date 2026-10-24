@@ -354,7 +354,7 @@ export function Dashboard() {
               <StarterPlans />
             </div>
             <div className="mt-3 flex gap-2">
-              <Button size="lg" icon="layers" onClick={() => navigate('/plans')} className="flex-1 whitespace-nowrap">
+              <Button size="lg" icon="layers" onClick={() => navigate('/plans/library')} className="flex-1 whitespace-nowrap">
                 Browse plans
               </Button>
               <Button variant="secondary" size="lg" onClick={() => navigate('/workout')} className="whitespace-nowrap">

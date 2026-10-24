@@ -9,13 +9,14 @@ import { ToastProvider } from './contexts/ToastContext'
 import { firebaseConfigured } from './lib/firebase'
 import { Body } from './pages/Body'
 import { Dashboard } from './pages/Dashboard'
-import { ExplorePlans } from './pages/ExplorePlans'
 import { FriendProfile, UserLookup } from './pages/FriendProfile'
 import { Friends } from './pages/Friends'
 import { History } from './pages/History'
 import { Login } from './pages/Login'
 import { Notifications } from './pages/Notifications'
+import { MyPlanDetail } from './pages/MyPlanDetail'
 import { PlanEditor } from './pages/PlanEditor'
+import { PlanLibrary } from './pages/PlanLibrary'
 import { Plans } from './pages/Plans'
 import { Progress } from './pages/Progress'
 import { SessionDetail } from './pages/SessionDetail'
@@ -84,7 +85,9 @@ function Gate() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/plans" element={<Plans />} />
         <Route path="/plans/new" element={<PlanEditor />} />
-        <Route path="/plans/explore" element={<ExplorePlans />} />
+        <Route path="/plans/library" element={<PlanLibrary />} />
+        <Route path="/plans/explore" element={<Navigate to="/plans/library" replace />} />
+        <Route path="/plans/view/:id" element={<MyPlanDetail />} />
         <Route path="/plans/public/:pid/edit" element={<PlanEditor />} />
         <Route path="/plans/:id" element={<PlanEditor />} />
         <Route path="/workout" element={<WorkoutActive />} />

@@ -410,13 +410,13 @@ function RecommendedCard({
 
 /**
  * The recommended plans for the moments a user has no active plan: the top one as a
- * hero card, further ones as compact rows. Falls back to the built-in templates when
- * nothing is recommended or the library can't be reached; `fallback={false}` renders
- * nothing then.
+ * hero card, further ones as compact rows. Only plans the owner starred count; with none
+ * it renders nothing (callers show a "Browse plans" CTA), unless `fallback` opts into the
+ * built-in templates.
  */
 export function StarterPlans({
   max = 3,
-  fallback = true,
+  fallback = false,
   title,
 }: {
   max?: number

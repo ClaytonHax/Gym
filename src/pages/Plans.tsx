@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
-import { AuthorLink, FollowPill, PlanUpdateCard, PublicPlanList, StarterPlans } from '../components/plans'
-import { Badge, Button, ConfirmSheet, EmptyState, IconButton, PageTitle, Skeleton } from '../components/ui'
+import { PlanUpdateCard, PublicPlanList } from '../components/plans'
+import { PlanSourcePill, PlanStats, SwitchPlanSheet } from '../components/planUi'
+import { Badge, Button, ConfirmSheet, IconButton, PageTitle, Skeleton } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { usePlanSync } from '../contexts/PlanSyncContext'
-import { PLAN_TEMPLATES, PPL_PUBLIC_ID } from '../data/programs'
+import { PPL_PUBLIC_ID } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
-import { useAuthorPlans, usePublicPlanActions, usedByCount } from '../hooks/usePublicPlans'
+import { useAuthorPlans, usePublicPlanActions } from '../hooks/usePublicPlans'
 import { parseDayKey } from '../lib/date'
 import { samePlanContent } from '../lib/planSync'
 import { planSummary } from '../lib/plans'
@@ -60,36 +61,65 @@ function WeekStrip({ slots }: { slots: ScheduleSlot[] }) {
   )
 }
 
-type Pending =
-  | { kind: 'delete'; plan: Plan }
-  | { kind: 'delay' }
-  | { kind: 'skip' }
-  | { kind: 'deactivate' }
-  | { kind: 'publish'; plan: Plan }
-  | { kind: 'unpublish'; plan: Plan }
-  | { kind: 'remove'; plan: PublicPlan }
+type Pending = { kind: 'delay' } | { kind: 'skip' } | { kind: 'deactivate' } | { kind: 'remove'; plan: PublicPlan }
+
+/** State A: nothing saved yet, so the page is a two-way choice. */
+function Onboarding() {
+  return (
+    <section aria-label="Get started" className="flex flex-col gap-4">
+      <div className="hero p-5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">Get started</p>
+        <h2 className="num-display mt-1 text-3xl">Choose your training plan</h2>
+        <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
+          A plan schedules every workout and rest day for you. Pick a proven one or build your own.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link
+          to="/plans/library"
+          className="group flex min-h-40 cursor-pointer flex-col gap-2 rounded-2xl bg-brand-500 p-5 text-white shadow-lg transition-colors duration-200 hover:bg-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        >
+          <span className="grid size-11 place-items-center rounded-xl bg-white/20">
+            <Icon name="layers" size={24} />
+          </span>
+          <span className="font-display text-2xl font-bold uppercase leading-tight">Pick a premade plan</span>
+          <span className="text-sm text-white/90">Proven splits, ready to go</span>
+          <span className="mt-auto flex items-center gap-1 text-sm font-bold">
+            Browse plans
+            <Icon name="chevron-right" size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+          </span>
+        </Link>
+        <Link
+          to="/plans/new"
+          className="card group flex min-h-40 cursor-pointer flex-col gap-2 p-5 transition-colors duration-200 hover:border-brand-500/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        >
+          <span className="grid size-11 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
+            <Icon name="pencil" size={22} />
+          </span>
+          <span className="font-display text-2xl font-bold uppercase leading-tight">Design my own</span>
+          <span className="w-fit">
+            <Badge>For experienced lifters</Badge>
+          </span>
+          <span className="mt-auto flex items-center gap-1 text-sm font-bold text-brand-400">
+            Start from scratch
+            <Icon name="chevron-right" size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
+          </span>
+        </Link>
+      </div>
+    </section>
+  )
+}
 
 export function Plans() {
   const navigate = useNavigate()
   const toast = useToast()
-  const {
-    plans,
-    loading,
-    activePlan,
-    today,
-    upcoming,
-    activatePlan,
-    deactivatePlan,
-    duplicatePlan,
-    deletePlan,
-    delayToday,
-    skipToday,
-  } = usePlans()
+  const { plans, loading, activePlan, today, upcoming, deactivatePlan, delayToday, skipToday } = usePlans()
   const { user } = useAuth()
-  const { publish, updatePublished, unpublish, removePublic, stopUsing } = usePublicPlanActions()
+  const { removePublic } = usePublicPlanActions()
   const published = useAuthorPlans(user?.uid)
   const { actionFor } = usePlanSync()
   const [pending, setPending] = useState<Pending | null>(null)
+  const [switching, setSwitching] = useState<Plan | null>(null)
 
   async function run(action: () => Promise<unknown>, done: string) {
     try {
@@ -105,22 +135,6 @@ export function Plans() {
 
   const confirm = (() => {
     switch (pending?.kind) {
-      case 'delete':
-        return {
-          title: `Delete “${pending.plan.name}”?`,
-          message: pending.plan.publishedId
-            ? 'This plan will be removed and unpublished from the library. Workouts you already logged are kept.'
-            : 'This plan will be removed. Workouts you already logged are kept.',
-          label: 'Delete',
-          tone: 'danger' as const,
-          go: () =>
-            run(async () => {
-              const { publishedId, sharedFrom } = pending.plan
-              if (publishedId) await unpublish(pending.plan.id)
-              if (sharedFrom) void stopUsing(sharedFrom.publicPlanId)
-              await deletePlan(pending.plan.id)
-            }, 'Plan deleted.'),
-        }
       case 'delay':
         return {
           title: 'Delay a day?',
@@ -147,23 +161,6 @@ export function Plans() {
           tone: 'danger' as const,
           go: () => run(deactivatePlan, 'Plan deactivated.'),
         }
-      case 'publish':
-        return {
-          title: `Publish “${pending.plan.name}”?`,
-          message:
-            'Anyone using the app can find this plan, see your @username as the author and add a copy. Your logged workouts stay private.',
-          label: 'Publish',
-          tone: 'primary' as const,
-          go: () => run(() => publish(pending.plan.id), 'Plan published.'),
-        }
-      case 'unpublish':
-        return {
-          title: `Unpublish “${pending.plan.name}”?`,
-          message: 'It disappears from the library. Copies people already added keep working.',
-          label: 'Unpublish',
-          tone: 'danger' as const,
-          go: () => run(() => unpublish(pending.plan.id), 'Plan unpublished.'),
-        }
       case 'remove':
         return {
           title: `Remove “${pending.plan.name}”?`,
@@ -177,285 +174,169 @@ export function Plans() {
     }
   })()
 
-  const others = plans.filter((p) => p.id !== activePlan?.id)
+  const ordered = [...(activePlan ? [activePlan] : []), ...plans.filter((p) => p.id !== activePlan?.id)]
   const publicOf = new Map(published.data.map((p) => [p.id, p]))
   // Library plans I wrote that have no private copy (e.g. the built-in PPL).
   const linked = new Set(plans.map((p) => p.publishedId))
   const libraryOnly = loading ? [] : published.data.filter((p) => !linked.has(p.id))
+  const onboarding = !loading && plans.length === 0
 
   return (
     <div className="animate-rise flex flex-col gap-6">
-      <PageTitle title="Plans" subtitle="Pick a template, make it yours, and let the schedule run itself." />
+      <PageTitle title="Plans" subtitle="Pick a plan, make it yours, and let the schedule run itself." />
 
-      {!loading && !activePlan ? <StarterPlans title="Recommended" fallback={false} /> : null}
-
-      <section aria-label="Active plan">
-        {loading ? (
-          <Skeleton className="h-56" />
-        ) : activePlan && today ? (
-          <div className="card-accent flex flex-col gap-4 p-4">
-            <div className="flex items-start gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">
-                  Active plan
-                </p>
-                <h2 className="num-display mt-1 truncate text-3xl">{activePlan.name}</h2>
-                <p className="tabular text-sm text-[var(--color-fg-muted)]">
-                  {today.dayNumber > 0
-                    ? `Day ${today.dayNumber} of ${today.cycleLength} · Cycle ${today.cycle}`
-                    : `Starts ${parseDayKey(today.date).toLocaleDateString()}`}
-                </p>
-              </div>
-              <IconButton
-                icon="pencil"
-                label={`Edit ${activePlan.name}`}
-                onClick={() => navigate(`/plans/${activePlan.id}`)}
-              />
+      {loading ? (
+        <Skeleton className="h-56" />
+      ) : onboarding ? (
+        <Onboarding />
+      ) : activePlan && today ? (
+        <section aria-label="Active plan" className="card-accent flex flex-col gap-4 p-4">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">Active plan</p>
+              <h2 className="num-display mt-1 truncate text-3xl">{activePlan.name}</h2>
+              <p className="tabular text-sm text-[var(--color-fg-muted)]">
+                {today.dayNumber > 0
+                  ? `Day ${today.dayNumber} of ${today.cycleLength} · Cycle ${today.cycle}`
+                  : `Starts ${parseDayKey(today.date).toLocaleDateString()}`}
+              </p>
             </div>
-
-            <WeekStrip slots={upcoming(7)} />
-
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="arrow-right"
-                disabled={today.isRest}
-                onClick={() => setPending({ kind: 'delay' })}
-              >
-                Delay a day
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="skip-forward"
-                disabled={today.isRest}
-                onClick={() => setPending({ kind: 'skip' })}
-              >
-                Skip today
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                icon="copy"
-                onClick={() =>
-                  void duplicatePlan(activePlan.id).then(
-                    () => toast('Plan duplicated.'),
-                    () => toast('Could not duplicate the plan.', 'error')
-                  )
-                }
-              >
-                Duplicate
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'deactivate' })}>
-                Deactivate
-              </Button>
-            </div>
+            <IconButton
+              icon="pencil"
+              label={`Edit ${activePlan.name}`}
+              onClick={() => navigate(`/plans/${activePlan.id}`)}
+            />
           </div>
-        ) : (
-          <EmptyState
-            icon="layers"
-            title="No active plan"
-            message="Choose a template below or build your own, then add it to your plan to get a daily schedule."
-          />
-        )}
-      </section>
 
-      <Link
-        to="/plans/explore"
-        className="card flex min-h-14 items-center gap-3 p-4 transition-colors duration-200 hover:border-brand-500/60"
-      >
-        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
-          <Icon name="search" size={22} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-display text-xl font-semibold">Explore plans</span>
-          <span className="block text-sm text-[var(--color-fg-muted)]">
-            Browse plans from other lifters and add one.
-          </span>
-        </span>
-        <Icon name="chevron-right" size={20} className="text-[var(--color-fg-muted)]" />
-      </Link>
+          <PlanStats days={activePlan.days} />
 
-      <section aria-label="Templates">
-        <h2 className="mb-3 text-lg font-semibold">Start a plan</h2>
-        <ul className="flex flex-col gap-3">
-          {PLAN_TEMPLATES.map((t) => (
-            <li key={t.id}>
-              <Link
-                to={`/plans/new?template=${t.id}`}
-                className="card group flex min-h-14 flex-col gap-2 p-4 transition-colors duration-200 hover:border-brand-500/60"
-              >
-                <div className="flex items-center gap-2">
-                  <h3 className="num-display flex-1 text-2xl">{t.name}</h3>
-                  <Icon
-                    name="chevron-right"
-                    size={20}
-                    className="text-[var(--color-fg-muted)] transition-transform duration-200 group-hover:translate-x-0.5"
-                  />
-                </div>
-                <p className="text-sm text-[var(--color-fg-muted)]">{t.description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  <Badge>{t.tagline}</Badge>
-                </div>
-                <ul className="flex flex-wrap gap-1.5" aria-label="Cycle order">
-                  {t.days.map((d) => (
-                    <li
-                      key={d.id}
-                      className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold ${
-                        d.kind === 'rest'
-                          ? 'border border-rest text-rest'
-                          : 'bg-brand-500/15 text-brand-400'
-                      }`}
-                    >
-                      {d.name}
-                    </li>
-                  ))}
-                </ul>
-              </Link>
-            </li>
-          ))}
-          <li>
-            <Link
-              to="/plans/new?custom=1"
-              className="card flex min-h-14 items-center gap-3 p-4 transition-colors duration-200 hover:border-brand-500/60"
+          <WeekStrip slots={upcoming(7)} />
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="arrow-right"
+              disabled={today.isRest}
+              onClick={() => setPending({ kind: 'delay' })}
             >
-              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
-                <Icon name="plus" size={22} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block font-display text-xl font-semibold">Custom plan</span>
-                <span className="block text-sm text-[var(--color-fg-muted)]">
-                  Start blank and design every day yourself.
-                </span>
-              </span>
-              <Icon name="chevron-right" size={20} className="text-[var(--color-fg-muted)]" />
-            </Link>
-          </li>
-          <li
-            className="flex min-h-14 items-center gap-3 rounded-2xl border border-dashed border-[var(--color-line)] p-4 text-sm text-[var(--color-fg-muted)]"
-            aria-disabled="true"
-          >
-            <Icon name="star" size={18} className="shrink-0" />
-            More templates coming soon
-          </li>
-        </ul>
-      </section>
-
-      <section aria-label="My plans">
-        <h2 className="mb-3 text-lg font-semibold">My plans</h2>
-        {loading ? (
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-24" />
-            <Skeleton className="h-24" />
+              Delay a day
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="skip-forward"
+              disabled={today.isRest}
+              onClick={() => setPending({ kind: 'skip' })}
+            >
+              Skip today
+            </Button>
+            <Button variant="secondary" size="sm" icon="eye" onClick={() => navigate(`/plans/view/${activePlan.id}`)}>
+              View plan
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'deactivate' })}>
+              Deactivate
+            </Button>
           </div>
-        ) : plans.length === 0 ? (
-          <EmptyState
-            icon="calendar"
-            title="No saved plans yet"
-            message="Plans you add show up here so you can switch, edit or duplicate them."
-          />
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {[...(activePlan ? [activePlan] : []), ...others].map((p) => {
-              const isActive = p.id === activePlan?.id
-              const pub = p.publishedId ? publicOf.get(p.publishedId) : undefined
-              // Saves publish automatically; this only shows if that failed (compared by content, not clocks).
-              const stale = !!pub && !samePlanContent(p, pub)
-              const action = actionFor(p)
-              return (
-                <li key={p.id} className={`card p-4 ${isActive ? 'border-brand-500/60' : ''}`}>
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <h3 className="truncate text-base font-semibold">{p.name}</h3>
-                        {isActive ? <Badge color="#22c55e">Active</Badge> : null}
-                      </div>
-                      <p className="tabular text-xs text-[var(--color-fg-muted)]">{summaryText(p)}</p>
-                      {p.publishedId ? (
-                        <p className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-go-400">
-                          <Icon name="check-circle" size={14} className="shrink-0" />
-                          <span className="tabular">
-                            {pub ? `Live · ${usedByCount(pub)} following` : 'Published'}
-                            {stale ? ' · changes not published' : ''}
-                          </span>
-                        </p>
-                      ) : null}
-                      {p.sharedFrom ? (
-                        <>
-                          <AuthorLink uid={p.sharedFrom.authorUid} label="By" />
-                          <FollowPill plan={p} action={action} />
-                        </>
-                      ) : null}
-                    </div>
-                    <div className="-mr-2 -mt-2 flex">
-                      <IconButton
-                        icon="pencil"
-                        label={`Edit ${p.name}`}
-                        onClick={() => navigate(`/plans/${p.id}`)}
+        </section>
+      ) : (
+        <section
+          aria-label="No active plan"
+          className="card flex items-start gap-3 border-brand-500/50 p-4"
+        >
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
+            <Icon name="layers" size={22} />
+          </span>
+          <div className="min-w-0">
+            <h2 className="font-display text-xl font-semibold uppercase">No active plan</h2>
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              Pick one from your plans below and tap Switch to start getting a daily schedule.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {!onboarding ? (
+        <section aria-label="My plans">
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="flex-1 text-lg font-semibold">My plans</h2>
+            <Button variant="secondary" size="sm" icon="plus" onClick={() => navigate('/plans/new')}>
+              New plan
+            </Button>
+          </div>
+          {loading ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Skeleton className="h-32" />
+              <Skeleton className="h-32" />
+            </div>
+          ) : (
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {ordered.map((p) => {
+                const isActive = p.id === activePlan?.id
+                const pub = p.publishedId ? publicOf.get(p.publishedId) : undefined
+                // Saves publish automatically; this only shows if that failed (compared by content, not clocks).
+                const stale = !!pub && !samePlanContent(p, pub)
+                return (
+                  <li
+                    key={p.id}
+                    className={`card flex flex-col gap-2 p-4 transition-colors duration-200 hover:border-brand-500/60 ${
+                      isActive ? 'border-brand-500/60' : ''
+                    }`}
+                  >
+                    <Link
+                      to={`/plans/view/${p.id}`}
+                      className="group -m-1 flex min-h-11 cursor-pointer items-start gap-2 rounded-xl p-1 focus-visible:outline-2 focus-visible:outline-brand-500"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-base font-semibold">{p.name}</span>
+                          {isActive ? <Badge color="#22c55e">Active</Badge> : null}
+                        </span>
+                        <span className="tabular block text-xs text-[var(--color-fg-muted)]">{summaryText(p)}</span>
+                      </span>
+                      <Icon
+                        name="chevron-right"
+                        size={20}
+                        className="mt-0.5 shrink-0 text-[var(--color-fg-muted)] transition-transform duration-200 group-hover:translate-x-0.5"
                       />
-                      <IconButton
-                        icon="copy"
-                        label={`Duplicate ${p.name}`}
-                        onClick={() =>
-                          void duplicatePlan(p.id).then(
-                            () => toast('Plan duplicated.'),
-                            () => toast('Could not duplicate the plan.', 'error')
-                          )
-                        }
-                      />
-                      <IconButton
-                        icon="trash"
-                        label={`Delete ${p.name}`}
-                        onClick={() => setPending({ kind: 'delete', plan: p })}
-                        className="hover:bg-rose-500/15 hover:text-rose-400"
-                      />
-                    </div>
-                  </div>
-                  {action === 'prompt' ? <PlanUpdateCard plan={p} /> : null}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {!isActive ? (
-                      <Button
-                        variant="go"
-                        size="sm"
-                        onClick={() => void run(() => activatePlan(p.id), `${p.name} is now your plan.`)}
-                      >
-                        Make active
-                      </Button>
+                    </Link>
+                    <PlanSourcePill plan={p} />
+                    {stale ? (
+                      <p className="text-xs font-semibold text-amber-400">Changes not published yet</p>
                     ) : null}
-                    {p.publishedId ? (
-                      <>
-                        {stale ? (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon="rotate"
-                            onClick={() => void run(() => updatePublished(p.id), 'Published plan updated.')}
-                          >
-                            Update published
-                          </Button>
-                        ) : null}
-                        <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'unpublish', plan: p })}>
-                          Unpublish
+                    {actionFor(p) === 'prompt' ? <PlanUpdateCard plan={p} /> : null}
+                    {!isActive ? (
+                      <div className="mt-auto pt-1">
+                        <Button variant="go" size="sm" full onClick={() => setSwitching(p)}>
+                          Switch
                         </Button>
-                      </>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        icon="share"
-                        onClick={() => setPending({ kind: 'publish', plan: p })}
-                      >
-                        Publish
-                      </Button>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
+                      </div>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {!loading ? (
+        <Link
+          to="/plans/library"
+          className="card flex min-h-14 cursor-pointer items-center gap-3 p-4 transition-colors duration-200 hover:border-brand-500/60 focus-visible:outline-2 focus-visible:outline-brand-500"
+        >
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
+            <Icon name="search" size={22} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-xl font-semibold">Browse more plans</span>
+            <span className="block text-sm text-[var(--color-fg-muted)]">
+              Recommended and community plans, ready to add.
+            </span>
+          </span>
+          <Icon name="chevron-right" size={20} className="text-[var(--color-fg-muted)]" />
+        </Link>
+      ) : null}
 
       {libraryOnly.length > 0 ? (
         <section aria-label="Published by you">
@@ -478,6 +359,8 @@ export function Plans() {
           />
         </section>
       ) : null}
+
+      <SwitchPlanSheet plan={switching} onClose={() => setSwitching(null)} />
 
       <ConfirmSheet
         open={confirm !== null}

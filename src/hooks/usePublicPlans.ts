@@ -21,7 +21,6 @@ import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { cloneDays, planSummary, templateToPlanDays } from '../lib/plans'
 import type { DayKey, FirestoreTime, Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
-import { PPL_PUBLIC_ID } from '../data/programs'
 import { isoOf } from '../lib/planSync'
 import { clean, usePlans } from './usePlans'
 
@@ -54,14 +53,11 @@ interface Stream<T> {
 
 /**
  * Starred plans (set by hand in the console), by starOrder then name. No composite
- * index needed. While nothing is starred the owner's classic PPL stands in, so it is
- * recommended from day one; callers fall back to the built-in template if that's gone too.
+ * index needed. Nothing is starred until the owner stars it: no stand-in plan.
  */
 export function useRecommendedPlans(): Stream<PublicPlan[]> {
   const { user } = useAuth()
   const [starred, setStarred] = useState<Stream<PublicPlan[]>>({ data: [], loading: true, error: false })
-  const [fallback, setFallback] = useState<{ plan: PublicPlan | null; loading: boolean }>({ plan: null, loading: true })
-  const needFallback = !starred.loading && starred.data.length === 0
 
   useEffect(() => {
     if (!user) return
@@ -84,29 +80,22 @@ export function useRecommendedPlans(): Stream<PublicPlan[]> {
     )
   }, [user])
 
-  useEffect(() => {
-    if (!user || !needFallback) return
-    return onSnapshot(
-      doc(db, 'publicPlans', PPL_PUBLIC_ID),
-      // Shown as recommended even though it isn't starred (yet).
-      (snap) => setFallback({ plan: snap.exists() ? { ...toPublicPlan(snap), starred: true } : null, loading: false }),
-      () => setFallback({ plan: null, loading: false })
-    )
-  }, [user, needFallback])
-
   if (!user) return { data: [], loading: false, error: false }
-  if (!needFallback) return starred
-  return { data: fallback.plan ? [fallback.plan] : [], loading: fallback.loading, error: false }
+  return starred
 }
 
-export interface ExplorePlans extends Stream<PublicPlan[]> {
+export interface AllPublicPlans extends Stream<PublicPlan[]> {
   hasMore: boolean
   loadingMore: boolean
   loadMore: () => Promise<void>
 }
 
-/** Newest-edited first: a live first page, then "Load more" pages via startAfter. */
-export function useExplorePlans(): ExplorePlans {
+/**
+ * Non-starred plans, newest-edited first: a live first page, then "Load more" pages via
+ * startAfter. Starred ones are dropped client-side (they live in the Recommended section),
+ * so paging counts raw documents.
+ */
+export function useAllPublicPlans(): AllPublicPlans {
   const { user } = useAuth()
   const [head, setHead] = useState<{ docs: QueryDocumentSnapshot<DocumentData>[]; loading: boolean; error: boolean }>({
     docs: [],
@@ -151,6 +140,7 @@ export function useExplorePlans(): ExplorePlans {
     return [...head.docs, ...more]
       .filter((d) => !seen.has(d.id) && !!seen.add(d.id))
       .map(toPublicPlan)
+      .filter((p) => p.starred !== true)
   }, [head.docs, more])
 
   return { data, loading: !!user && head.loading, error: head.error, hasMore, loadingMore, loadMore }
