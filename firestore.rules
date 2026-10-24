@@ -19,7 +19,7 @@ service cloud.firestore {
     // The streak bot (Vercel cron) is a dedicated Auth user. setup-streak-bot.mjs
     // swaps the placeholder for its real uid; until then it matches nobody.
     function isBot() {
-      return request.auth != null && request.auth.uid == '__STREAK_BOT_UID__';
+      return request.auth != null && request.auth.uid == 'e5jn3Mt720QOqxWOKrnR1uTc9WD2';
     }
     // `uid` lists the caller as a friend.
     function friendOf(uid) {

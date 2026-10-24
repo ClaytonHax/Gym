@@ -8,10 +8,14 @@ import {
 
 const RULES = readFileSync(process.argv[2] ?? fileURLToPath(new URL('../firestore.rules', import.meta.url)), 'utf8')
 const BOT = 'streakbot'
+function withBotUid(uid) {
+  return RULES.replace(/(function isBot\(\) \{\s*return request\.auth != null && request\.auth\.uid == ')[^']*(')/, `$1${uid}$2`)
+}
+
 const env = await initializeTestEnvironment({
   projectId: 'demo-gym',
-  // The real bot uid is substituted by scripts/setup-streak-bot.mjs; use a fixed one here.
-  firestore: { rules: RULES.replaceAll('__STREAK_BOT_UID__', BOT), host: '127.0.0.1', port: 8080 },
+  // Swap whatever bot uid the rules hold (placeholder or real) for a fixed test one.
+  firestore: { rules: withBotUid(BOT), host: '127.0.0.1', port: 8080 },
 })
 // Start from an empty database so reruns against a long-lived emulator behave.
 await env.clearFirestore()
@@ -259,7 +263,7 @@ await t('user cannot spoof the bot', () =>
 // With the placeholder still in place, nobody is the bot.
 const envPh = await initializeTestEnvironment({
   projectId: 'demo-gym-placeholder',
-  firestore: { rules: RULES, host: '127.0.0.1', port: 8080 },
+  firestore: { rules: withBotUid('__STREAK_BOT_UID__'), host: '127.0.0.1', port: 8080 },
 })
 await envPh.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), 'streakWatch/bob'), watch())
