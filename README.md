@@ -13,8 +13,9 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 - Supersets with a linked-exercise marker; rest timer waits until the last exercise in the group
 - Plate calculator (kg or lb bars), per-set RPE, per-exercise notes
 - Live PR alert the moment a set beats your best estimated 1RM
-- Six split templates (Push / Pull / Legs / Upper / Lower / Full Body) plus empty sessions
-- 60+ exercise library across 10 muscle groups, extendable with your own movements
+- Six built-in set workouts (Push 1/2, Pull 1/2, Legs 1/2) with per-set rep ranges and rest times; the dashboard suggests the next one in the rotation
+- Routine builder for your own workouts (sets, rep ranges, rest), plus empty sessions
+- 75+ exercise library across 10 muscle groups, extendable with your own movements
 - Sessions survive a refresh, a crash or a dead connection — and resume on any device
 
 **Progress**

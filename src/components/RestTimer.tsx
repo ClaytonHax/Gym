@@ -48,6 +48,8 @@ export function RestTimer({
   })
   const [endsAt, setEndsAt] = useState<number | null>(null)
   const [remaining, setRemaining] = useState(0)
+  // Length of the countdown in flight — a per-exercise rest can differ from the preset.
+  const [total, setTotal] = useState(0)
   const firedRef = useRef(false)
 
   const start = useCallback(
@@ -56,6 +58,7 @@ export function RestTimer({
       firedRef.current = false
       setEndsAt(Date.now() + secs * 1000)
       setRemaining(secs)
+      setTotal(secs)
     },
     [duration]
   )
@@ -87,7 +90,7 @@ export function RestTimer({
   }
 
   const running = endsAt !== null
-  const pct = running ? (remaining / duration) * 100 : 0
+  const pct = running && total > 0 ? (remaining / total) * 100 : 0
 
   return (
     <div className="card overflow-hidden p-0">

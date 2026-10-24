@@ -27,6 +27,8 @@ export interface WorkoutSet {
   weightKg: number
   reps: number
   done: boolean
+  /** Prescribed rep range for this set, e.g. "5-9" or "failure". Shown as a hint. */
+  targetReps?: string
   /** Rate of perceived exertion, 6–10. */
   rpe?: number
   warmup?: boolean
@@ -39,6 +41,8 @@ export interface WorkoutExercise {
   tracksWeight: boolean
   sets: WorkoutSet[]
   notes?: string
+  /** Prescribed rest after a working set; overrides the global rest preset. */
+  restSec?: number
   /** Exercises sharing an id are a superset — done back-to-back with no rest between. */
   supersetId?: string
 }
@@ -93,17 +97,35 @@ export interface PersonalRecord {
   date: string
 }
 
-/** A reusable workout template saved by the user (Hevy / Strong "routines"). */
+/** One prescribed exercise in a program or routine. */
+export interface PlanExercise {
+  exerciseId: string
+  name: string
+  muscle: MuscleGroup
+  tracksWeight: boolean
+  /** One rep-range target per set — its length is the set count. */
+  targets: string[]
+  restSec?: number
+  supersetId?: string
+  /** Legacy routines saved before targets existed. */
+  sets?: number
+}
+
+/** A reusable workout the user built or saved. */
 export interface Routine {
   id: string
   name: string
-  exercises: Array<{
-    exerciseId: string
-    name: string
-    muscle: MuscleGroup
-    tracksWeight: boolean
-    sets: number
-    supersetId?: string
-  }>
+  exercises: PlanExercise[]
   createdAt: string
+}
+
+export type ProgramGroup = 'Push' | 'Pull' | 'Legs'
+
+/** A built-in set workout (Push 1, Pull 2 …). */
+export interface Program {
+  id: string
+  name: string
+  group: ProgramGroup
+  focus: string
+  exercises: PlanExercise[]
 }

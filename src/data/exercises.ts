@@ -112,63 +112,27 @@ export const BUILTIN_EXERCISES: Exercise[] = [
   ex('ab-wheel', 'Ab Wheel Rollout', 'Core', 'Other', false),
   ex('sit-up', 'Sit-Up', 'Core', 'Bodyweight', false),
 
+  // Added for the Push / Pull / Legs programs
+  ex('cable-lateral-raise', 'Cable Lateral Raise', 'Shoulders', 'Cable'),
+  ex('single-arm-cable-pulldown', 'Single Arm Cable Pulldown', 'Back', 'Cable'),
+  ex('single-arm-cable-row', 'Single Arm Cable Row', 'Back', 'Cable'),
+  ex('cable-pullover', 'Cable Pullover', 'Back', 'Cable'),
+  ex('straight-arm-pulldown', 'Straight Arm Pulldown', 'Back', 'Cable'),
+  ex('weighted-pull-up', 'Weighted Pull-Up', 'Back', 'Bodyweight'),
+  ex('straight-bar-cable-curl', 'Straight Bar Cable Curl', 'Biceps', 'Cable'),
+  ex('rope-curl', 'Rope Curl', 'Biceps', 'Cable'),
+  ex('ez-bar-curl', 'EZ Bar Curl', 'Biceps', 'Barbell'),
+  ex('reverse-crunch', 'Reverse Crunch', 'Core', 'Bodyweight', false),
+  ex('woodchopper', 'High to Low Woodchopper', 'Core', 'Cable'),
+  ex('weighted-crunch', 'Weighted Crunch', 'Core', 'Other'),
+  ex('serratus-jab', 'Serratus Jab', 'Core', 'Dumbbell'),
+  ex('stiff-leg-deadlift', 'Stiff Leg Deadlift', 'Legs', 'Barbell'),
+  ex('hack-squat', 'Hack Squat', 'Legs', 'Machine'),
+
   // Cardio
   ex('treadmill', 'Treadmill', 'Cardio', 'Machine', false),
   ex('cycling', 'Cycling', 'Cardio', 'Machine', false),
   ex('rowing', 'Rowing Machine', 'Cardio', 'Machine', false),
   ex('stair-climber', 'Stair Climber', 'Cardio', 'Machine', false),
   ex('jump-rope', 'Jump Rope', 'Cardio', 'Other', false),
-]
-
-/** Starting-point split templates so day one isn't an empty screen. */
-export interface Template {
-  id: string
-  name: string
-  focus: string
-  exerciseIds: string[]
-}
-
-export const TEMPLATES: Template[] = [
-  {
-    id: 'push',
-    name: 'Push Day',
-    focus: 'Chest · Shoulders · Triceps',
-    exerciseIds: [
-      'bench-press',
-      'incline-dumbbell-press',
-      'overhead-press',
-      'lateral-raise',
-      'tricep-pushdown',
-    ],
-  },
-  {
-    id: 'pull',
-    name: 'Pull Day',
-    focus: 'Back · Biceps',
-    exerciseIds: ['deadlift', 'lat-pulldown', 'barbell-row', 'face-pull', 'dumbbell-curl'],
-  },
-  {
-    id: 'legs',
-    name: 'Leg Day',
-    focus: 'Quads · Hamstrings · Glutes',
-    exerciseIds: ['squat', 'romanian-deadlift', 'leg-press', 'leg-curl', 'calf-raise'],
-  },
-  {
-    id: 'upper',
-    name: 'Upper Body',
-    focus: 'Full upper split',
-    exerciseIds: ['bench-press', 'barbell-row', 'overhead-press', 'lat-pulldown', 'hammer-curl'],
-  },
-  {
-    id: 'lower',
-    name: 'Lower Body',
-    focus: 'Legs · Glutes · Core',
-    exerciseIds: ['squat', 'hip-thrust', 'lunge', 'leg-extension', 'hanging-leg-raise'],
-  },
-  {
-    id: 'full',
-    name: 'Full Body',
-    focus: 'Compound circuit',
-    exerciseIds: ['squat', 'bench-press', 'barbell-row', 'overhead-press', 'plank'],
-  },
 ]

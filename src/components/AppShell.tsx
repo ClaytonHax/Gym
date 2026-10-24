@@ -5,10 +5,10 @@ import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { fmtDuration } from '../lib/date'
 import { InstallPrompt } from './InstallPrompt'
 
-const TABS: Array<{ to: string; label: string; icon: IconName }> = [
+const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean }> = [
   { to: '/', label: 'Home', icon: 'home' },
   { to: '/history', label: 'History', icon: 'history' },
-  { to: '/workout', label: 'Train', icon: 'dumbbell' },
+  { to: '/workout', label: 'Train', icon: 'dumbbell', primary: true },
   { to: '/progress', label: 'Progress', icon: 'trending' },
   { to: '/body', label: 'Body', icon: 'scale' },
 ]
@@ -109,35 +109,50 @@ export function AppShell() {
           bg-[var(--color-surface)]/95 backdrop-blur-lg"
       >
         <ActiveWorkoutBar />
-        <ul className="mx-auto flex max-w-2xl">
+        <ul className="mx-auto flex max-w-2xl items-end">
           {TABS.map((tab) => (
             <li key={tab.to} className="flex-1">
               <NavLink
                 to={tab.to}
                 end={tab.to === '/'}
                 className={({ isActive }) =>
-                  `flex min-h-14 flex-col items-center justify-center gap-1 py-2
-                   transition-colors duration-200 ${
-                     isActive
-                       ? 'text-brand-400'
-                       : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
-                   }`
+                  tab.primary
+                    ? `relative -mt-5 flex flex-col items-center gap-1 pb-2 ${
+                        isActive ? 'text-brand-400' : 'text-[var(--color-fg-muted)]'
+                      }`
+                    : `flex min-h-14 flex-col items-center justify-center gap-1 py-2
+                       transition-colors duration-200 ${
+                         isActive
+                           ? 'text-brand-400'
+                           : 'text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
+                       }`
                 }
               >
-                {({ isActive }) => (
-                  <>
-                    <Icon name={tab.icon} size={22} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider">
-                      {tab.label}
-                    </span>
-                    {/* Active state is shape + colour, not colour alone. */}
-                    <span
-                      className={`h-0.5 w-6 rounded-full transition-colors duration-200 ${
-                        isActive ? 'bg-brand-500' : 'bg-transparent'
-                      }`}
-                    />
-                  </>
-                )}
+                {({ isActive }) =>
+                  tab.primary ? (
+                    <>
+                      <span
+                        className="grid size-14 place-items-center rounded-2xl bg-brand-500 text-white
+                          shadow-lg shadow-brand-500/40 ring-4 ring-[var(--color-surface)]
+                          transition-colors duration-200 hover:bg-brand-600"
+                      >
+                        <Icon name={tab.icon} size={26} />
+                      </span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon name={tab.icon} size={22} />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
+                      {/* Active state is shape + colour, not colour alone. */}
+                      <span
+                        className={`h-0.5 w-6 rounded-full transition-colors duration-200 ${
+                          isActive ? 'bg-brand-500' : 'bg-transparent'
+                        }`}
+                      />
+                    </>
+                  )
+                }
               </NavLink>
             </li>
           ))}

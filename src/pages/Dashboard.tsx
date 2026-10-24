@@ -17,7 +17,9 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
-import { BUILTIN_EXERCISES, MUSCLE_COLORS, TEMPLATES } from '../data/exercises'
+import { MUSCLE_COLORS } from '../data/exercises'
+import { nextProgram, planToExercises, PROGRAMS } from '../data/programs'
+import { estimateMinutes } from './StartScreen'
 import { fmtVolume, fmtWeight } from '../lib/units'
 import { addDays, dayKey, fmtDuration, relativeDay, startOfWeek } from '../lib/date'
 import { muscleRecovery } from '../lib/recovery'
@@ -157,24 +159,16 @@ export function Dashboard() {
 
   const weightDelta = latest && previous ? latest.weightKg - previous.weightKg : null
 
-  function startTemplate(templateId: string) {
-    const template = TEMPLATES.find((t) => t.id === templateId)
-    if (!template) return
-    const exercises = template.exerciseIds.flatMap((id) => {
-      const ex = BUILTIN_EXERCISES.find((e) => e.id === id)
-      if (!ex) return []
-      return [
-        {
-          exerciseId: ex.id,
-          name: ex.name,
-          muscle: ex.muscle,
-          tracksWeight: ex.tracksWeight,
-          // Pre-seed three empty sets — the usual starting point, easy to trim.
-          sets: Array.from({ length: 3 }, () => ({ weightKg: 0, reps: 0, done: false })),
-        },
-      ]
+  const next = useMemo(() => nextProgram(workouts), [workouts])
+
+  function startProgram(id: string) {
+    const program = PROGRAMS.find((p) => p.id === id)
+    if (!program) return
+    save({
+      name: program.name,
+      startedAt: new Date().toISOString(),
+      exercises: planToExercises(program.exercises),
     })
-    save({ name: template.name, startedAt: new Date().toISOString(), exercises })
     navigate('/workout')
   }
 
@@ -199,16 +193,41 @@ export function Dashboard() {
       </header>
 
       {/* Primary action — the one thing you open this app to do. */}
-      <Button
-        size="lg"
-        variant={active ? 'primary' : 'go'}
-        full
-        icon={active ? 'dumbbell' : 'play'}
-        onClick={() => navigate('/workout')}
-        className="text-lg"
-      >
-        {active ? 'Resume workout' : 'Start workout'}
-      </Button>
+      {active ? (
+        <Button
+          size="lg"
+          full
+          icon="dumbbell"
+          onClick={() => navigate('/workout')}
+          className="text-lg"
+        >
+          Resume {active.name}
+        </Button>
+      ) : (
+        <section aria-label="Up next" className="hero relative overflow-hidden rounded-2xl p-5">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-white/80">Up next</p>
+          <h2 className="mt-1 font-display text-5xl font-bold leading-none text-white">{next.name}</h2>
+          <p className="mt-1 text-sm font-medium text-white/85">{next.focus}</p>
+          <p className="tabular mt-3 text-xs font-semibold text-white/80">
+            {next.exercises.length} exercises ·{' '}
+            {next.exercises.reduce((n, e) => n + e.targets.length, 0)} sets · ~
+            {estimateMinutes(next.exercises)} min
+          </p>
+          <div className="mt-4 flex gap-2">
+            <Button variant="go" size="lg" icon="play" onClick={() => startProgram(next.id)} className="flex-1">
+              Start {next.name}
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => navigate('/workout')}
+              aria-label="Choose a different workout"
+            >
+              Other
+            </Button>
+          </div>
+        </section>
+      )}
 
       <section aria-label="Key stats" className="grid grid-cols-2 gap-3">
         {loading ? (
@@ -272,23 +291,23 @@ export function Dashboard() {
 
       {!active ? (
         <section>
-          <SectionHeader title="Quick start" />
+          <SectionHeader title="Set workouts" />
           <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1">
-            {TEMPLATES.map((t) => (
+            {PROGRAMS.map((p) => (
               <button
-                key={t.id}
+                key={p.id}
                 type="button"
-                onClick={() => startTemplate(t.id)}
+                onClick={() => startProgram(p.id)}
                 className="card min-w-[10.5rem] shrink-0 snap-start p-3.5 text-left
                   transition-colors duration-200 hover:border-brand-500/60"
               >
                 <span className="mb-2 grid size-9 place-items-center rounded-lg bg-brand-500/10 text-brand-400">
                   <Icon name="dumbbell" size={18} />
                 </span>
-                <span className="block font-display text-lg font-semibold">{t.name}</span>
-                <span className="block text-xs text-[var(--color-fg-muted)]">{t.focus}</span>
+                <span className="block font-display text-xl font-semibold">{p.name}</span>
+                <span className="block text-xs text-[var(--color-fg-muted)]">{p.focus}</span>
                 <span className="mt-2 block text-xs font-semibold text-brand-400">
-                  {t.exerciseIds.length} exercises
+                  {p.exercises.length} exercises
                 </span>
               </button>
             ))}

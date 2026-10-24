@@ -19,6 +19,7 @@ export function SetRow({
   set,
   tracksWeight,
   placeholder,
+  targetReps,
   onChange,
   onToggleDone,
   onRemove,
@@ -28,6 +29,8 @@ export function SetRow({
   tracksWeight: boolean
   /** "Last time" target, e.g. "80 × 8". */
   placeholder?: { weightKg: number; reps: number }
+  /** Prescribed range ('5-9', 'failure') — shown in the empty reps field. */
+  targetReps?: string
   onChange: (patch: Partial<WorkoutSet>) => void
   onToggleDone: () => void
   onRemove: () => void
@@ -136,8 +139,8 @@ export function SetRow({
         value={repsText}
         onChange={(e) => commitReps(e.target.value)}
         aria-label={`Set ${index + 1} reps`}
-        placeholder={placeholder ? String(placeholder.reps) : '0'}
-        className="tabular min-h-10 w-14 shrink-0 rounded-lg border border-transparent bg-[var(--color-surface)] px-1 text-center font-semibold text-[var(--color-fg)] outline-none focus:border-brand-500"
+        placeholder={targetReps ?? (placeholder ? String(placeholder.reps) : '0')}
+        className="tabular min-h-10 w-16 shrink-0 rounded-lg border border-transparent bg-[var(--color-surface)] px-1 text-center font-semibold text-[var(--color-fg)] outline-none focus:border-brand-500"
       />
       <button
         type="button"

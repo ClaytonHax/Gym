@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { addDoc, collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, onSnapshot, updateDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import type { Routine } from '../types'
@@ -33,6 +33,14 @@ export function useRoutines() {
     [user]
   )
 
+  const updateRoutine = useCallback(
+    async (id: string, patch: Pick<Routine, 'name' | 'exercises'>) => {
+      if (!user) throw new Error('Not signed in')
+      await updateDoc(doc(db, 'users', user.uid, 'routines', id), patch)
+    },
+    [user]
+  )
+
   const deleteRoutine = useCallback(
     async (id: string) => {
       if (!user) throw new Error('Not signed in')
@@ -41,5 +49,5 @@ export function useRoutines() {
     [user]
   )
 
-  return { routines, saveRoutine, deleteRoutine }
+  return { routines, saveRoutine, updateRoutine, deleteRoutine }
 }

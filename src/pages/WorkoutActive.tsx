@@ -12,6 +12,7 @@ import {
 } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { PlateCalculator } from '../components/PlateCalculator'
+import { StartScreen } from './StartScreen'
 import { RestTimer, type RestTimerHandle } from '../components/RestTimer'
 import { SetRow } from '../components/SetRow'
 import { useSettings } from '../contexts/SettingsContext'
@@ -19,11 +20,11 @@ import { useToast } from '../contexts/ToastContext'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { useRoutines } from '../hooks/useRoutines'
 import { useWorkouts } from '../hooks/useWorkouts'
-import { BUILTIN_EXERCISES, MUSCLE_COLORS, TEMPLATES } from '../data/exercises'
-import { fmtDuration } from '../lib/date'
+import { MUSCLE_COLORS } from '../data/exercises'
+import { fmtClock, fmtDuration } from '../lib/date'
 import { fmtVolume, fmtWeight } from '../lib/units'
 import { completedSetCount, estimate1rm, lastPerformance, personalRecords, volumeOf } from '../lib/stats'
-import type { ActiveWorkout, Exercise, Routine, WorkoutExercise, WorkoutSet } from '../types'
+import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types'
 
 function emptySet(): WorkoutSet {
   return { weightKg: 0, reps: 0, done: false }
@@ -48,117 +49,6 @@ function defaultName(): string {
   const h = new Date().getHours()
   const part = h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening'
   return `${part} Workout`
-}
-
-/* -------------------------------------------------------------------------- */
-/* Start screen                                                                */
-/* -------------------------------------------------------------------------- */
-
-function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void }) {
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const { routines, deleteRoutine } = useRoutines()
-  const toast = useToast()
-
-  function startRoutine(routine: Routine) {
-    onStart({
-      name: routine.name,
-      startedAt: new Date().toISOString(),
-      exercises: routine.exercises.map(({ sets, ...ex }) => ({
-        ...ex,
-        sets: Array.from({ length: sets }, emptySet),
-      })),
-    })
-  }
-
-  function startBlank(exercises: WorkoutExercise[] = []) {
-    onStart({ name: defaultName(), startedAt: new Date().toISOString(), exercises })
-  }
-
-  function startTemplate(id: string) {
-    const template = TEMPLATES.find((t) => t.id === id)
-    if (!template) return
-    const exercises = template.exerciseIds.flatMap((exId) => {
-      const ex = BUILTIN_EXERCISES.find((e) => e.id === exId)
-      return ex ? [{ ...toWorkoutExercise(ex), sets: [emptySet(), emptySet(), emptySet()] }] : []
-    })
-    onStart({ name: template.name, startedAt: new Date().toISOString(), exercises })
-  }
-
-  return (
-    <div className="animate-rise flex flex-col gap-6">
-      <header>
-        <h1 className="font-display text-3xl font-semibold tracking-wide">New workout</h1>
-        <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-          Pick a split or build your own session.
-        </p>
-      </header>
-
-      <Button size="lg" variant="go" full icon="play" onClick={() => startBlank()}>
-        Start empty workout
-      </Button>
-
-      {routines.length > 0 ? (
-        <section>
-          <h2 className="mb-3 text-lg font-semibold">My routines</h2>
-          <ul className="flex flex-col gap-2">
-            {routines.map((r) => (
-              <li key={r.id} className="card flex items-center gap-2 p-2 pl-3.5">
-                <button
-                  type="button"
-                  onClick={() => startRoutine(r)}
-                  className="min-w-0 flex-1 py-1.5 text-left"
-                >
-                  <span className="block truncate font-semibold">{r.name}</span>
-                  <span className="block truncate text-xs text-[var(--color-fg-muted)]">
-                    {r.exercises.length} exercises · {r.exercises.map((e) => e.name).join(', ')}
-                  </span>
-                </button>
-                <IconButton
-                  icon="trash"
-                  label={`Delete routine ${r.name}`}
-                  onClick={() => {
-                    void deleteRoutine(r.id).then(() => toast('Routine deleted.', 'info'))
-                  }}
-                  className="hover:bg-rose-500/15 hover:text-rose-400"
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section>
-        <h2 className="mb-3 text-lg font-semibold">Templates</h2>
-        <ul className="grid grid-cols-2 gap-3">
-          {TEMPLATES.map((t) => (
-            <li key={t.id}>
-              <button
-                type="button"
-                onClick={() => startTemplate(t.id)}
-                className="card h-full w-full p-3.5 text-left transition-colors duration-200 hover:border-brand-500/60"
-              >
-                <span className="mb-2 grid size-9 place-items-center rounded-lg bg-brand-500/10 text-brand-400">
-                  <Icon name="layers" size={18} />
-                </span>
-                <span className="block font-display text-lg font-semibold">{t.name}</span>
-                <span className="block text-xs text-[var(--color-fg-muted)]">{t.focus}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <Button variant="secondary" size="lg" full icon="search" onClick={() => setPickerOpen(true)}>
-        Choose exercises
-      </Button>
-
-      <ExercisePicker
-        open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={(picked) => startBlank(picked.map(toWorkoutExercise))}
-      />
-    </div>
-  )
 }
 
 /* -------------------------------------------------------------------------- */
@@ -212,6 +102,9 @@ export function WorkoutActive() {
     () => new Map(personalRecords(workouts).map((r) => [r.exerciseId, r.estimated1rmKg])),
     [workouts]
   )
+
+  const totalSets = active ? active.exercises.reduce((n, e) => n + e.sets.length, 0) : 0
+  const doneSets = active ? active.exercises.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0) : 0
 
   const volume = useMemo(() => (active ? volumeOf(active.exercises) : 0), [active])
   const setsDone = useMemo(() => (active ? completedSetCount(active.exercises) : 0), [active])
@@ -274,7 +167,7 @@ export function WorkoutActive() {
     // Superset partners go back-to-back; rest only after the last exercise in the group.
     const next = active?.exercises[exIndex + 1]
     const mid = Boolean(ex.supersetId) && next?.supersetId === ex.supersetId
-    if (!mid) timerRef.current?.start()
+    if (!mid) timerRef.current?.start(ex.restSec)
   }
 
   function toggleSuperset(index: number) {
@@ -313,7 +206,12 @@ export function WorkoutActive() {
     }
     updateExercise(exIndex, (e) => ({
       ...e,
-      sets: last.sets.map((s) => ({ weightKg: s.weightKg, reps: s.reps, done: false })),
+      sets: last.sets.map((s, i) => ({
+        weightKg: s.weightKg,
+        reps: s.reps,
+        done: false,
+        ...(e.sets[i]?.targetReps ? { targetReps: e.sets[i].targetReps } : {}),
+      })),
     }))
     toast('Loaded your last session’s sets.')
   }
@@ -366,7 +264,8 @@ export function WorkoutActive() {
               name: ex.name,
               muscle: ex.muscle,
               tracksWeight: ex.tracksWeight,
-              sets: ex.sets.filter((s) => !s.warmup).length || ex.sets.length,
+              targets: ex.sets.filter((s) => !s.warmup).map((s) => s.targetReps ?? ''),
+              restSec: ex.restSec,
               supersetId: ex.supersetId,
             })
           ),
@@ -396,6 +295,7 @@ export function WorkoutActive() {
 
   return (
     <div className="animate-rise flex flex-col gap-4">
+      <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-3 bg-[var(--color-canvas)]/90 px-4 pb-3 pt-2 backdrop-blur-md">
       <header className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           {renaming ? (
@@ -432,7 +332,22 @@ export function WorkoutActive() {
         />
       </header>
 
+      <div
+        role="progressbar"
+        aria-label="Sets completed"
+        aria-valuemin={0}
+        aria-valuemax={totalSets}
+        aria-valuenow={doneSets}
+        className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]"
+      >
+        <div
+          className="h-full rounded-full bg-go-500 transition-[width] duration-300"
+          style={{ width: `${totalSets ? (doneSets / totalSets) * 100 : 0}%` }}
+        />
+      </div>
+
       <RestTimer onReady={onTimerReady} />
+      </div>
 
       {active.exercises.length === 0 ? (
         <Card className="flex flex-col items-center gap-3 py-8 text-center">
@@ -464,6 +379,12 @@ export function WorkoutActive() {
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
                       {ex.supersetId ? <Badge color="#8b5cf6">Superset</Badge> : null}
                     </div>
+                    {ex.sets.some((s) => s.targetReps) ? (
+                      <p className="tabular mt-0.5 truncate text-xs font-semibold text-brand-400">
+                        Target {ex.sets.map((s) => s.targetReps ?? '—').join(' → ')}
+                        {ex.restSec ? ` · rest ${fmtClock(ex.restSec)}` : ''}
+                      </p>
+                    ) : null}
                     {last ? (
                       <p className="tabular mt-0.5 truncate text-xs text-[var(--color-fg-muted)]">
                         Last:{' '}
@@ -520,6 +441,7 @@ export function WorkoutActive() {
                       set={set}
                       tracksWeight={ex.tracksWeight}
                       placeholder={last?.sets[setIndex]}
+                      targetReps={set.targetReps}
                       onChange={(setPatch) =>
                         updateExercise(exIndex, (e) => ({
                           ...e,
