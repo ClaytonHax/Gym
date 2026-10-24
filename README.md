@@ -9,6 +9,10 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 - Live workout logger with a running timer, per-set weight/rep steppers and warm-up flags
 - Auto-starting rest timer (60/90/120/180s) with vibration + audio alert
 - "Last time" targets shown inline, and one-tap copy of your previous session's sets
+- Saved routines (Hevy/Strong-style): tick "Save as a routine" when finishing, relaunch in one tap
+- Supersets with a linked-exercise marker; rest timer waits until the last exercise in the group
+- Plate calculator (kg or lb bars), per-set RPE, per-exercise notes
+- Live PR alert the moment a set beats your best estimated 1RM
 - Six split templates (Push / Pull / Legs / Upper / Lower / Full Body) plus empty sessions
 - 60+ exercise library across 10 muscle groups, extendable with your own movements
 - Sessions survive a refresh, a crash or a dead connection — and resume on any device
@@ -16,6 +20,7 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 **Progress**
 - Weekly volume, estimated 1RM trends (Epley), muscle-group balance radar
 - Automatic personal records per exercise
+- Muscle recovery card showing what's ready to train again (rule-based, no AI)
 - Body weight chart with a 7-day moving average, body fat %, BMI and goal tracking
 - Every chart has a "View as table" fallback for screen readers
 
@@ -24,7 +29,7 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 - Offline-first: Firestore persistent cache means sets log fine with no signal and sync later
 - kg/lb switching (weights are always stored in kg, so nothing is ever lost in conversion)
 - Dark / light / system themes
-- JSON export of all your data
+- JSON export of all your data, plus a per-set CSV export
 
 ## Setup
 
@@ -53,6 +58,7 @@ users/{uid}                     profile: displayName, unit, theme, heightCm, goa
 users/{uid}/workouts/{id}       completed sessions (denormalised totalVolumeKg + setCount)
 users/{uid}/bodylog/{yyyy-mm-dd}  one weigh-in per day — the date is the document id
 users/{uid}/exercises/{id}      custom exercises
+users/{uid}/routines/{id}       saved routines
 users/{uid}/state/activeWorkout the in-progress session, mirrored from localStorage
 ```
 

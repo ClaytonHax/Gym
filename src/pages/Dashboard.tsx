@@ -20,6 +20,7 @@ import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { BUILTIN_EXERCISES, MUSCLE_COLORS, TEMPLATES } from '../data/exercises'
 import { fmtVolume, fmtWeight } from '../lib/units'
 import { addDays, dayKey, fmtDuration, relativeDay, startOfWeek } from '../lib/date'
+import { muscleRecovery } from '../lib/recovery'
 import { bodyWeightSeries, personalRecords, weekStreak, workoutsThisWeek } from '../lib/stats'
 import type { MuscleGroup } from '../types'
 
@@ -90,6 +91,42 @@ function WeekStrip({ trainedDays, goal }: { trainedDays: Set<string>; goal: numb
           )
         })}
       </ul>
+    </Card>
+  )
+}
+
+const RECOVERY_STYLE = {
+  fresh: 'border-go-500/40 bg-go-500/10 text-go-400',
+  recovering: 'border-amber-500/40 bg-amber-500/10 text-amber-400',
+  untrained: 'border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]',
+} as const
+
+/** Which muscles are ready to train again — a rule-based take on Fitbod's recovery view. */
+function RecoveryCard({ workouts }: { workouts: Parameters<typeof muscleRecovery>[0] }) {
+  const items = useMemo(() => muscleRecovery(workouts), [workouts])
+  return (
+    <Card>
+      <h2 className="mb-3 text-base font-semibold">Muscle recovery</h2>
+      <ul className="grid grid-cols-2 gap-2">
+        {items.map((m) => (
+          <li
+            key={m.muscle}
+            className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm ${RECOVERY_STYLE[m.state]}`}
+          >
+            <span className="font-semibold">{m.muscle}</span>
+            <span className="tabular text-xs">
+              {m.hoursSince === null
+                ? 'Not yet'
+                : m.state === 'fresh'
+                  ? 'Ready'
+                  : `${Math.ceil(m.hoursSince)}h ago`}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-[var(--color-fg-muted)]">
+        Green means enough time has passed since you last trained it (24–72h by muscle).
+      </p>
     </Card>
   )
 }
@@ -230,6 +267,8 @@ export function Dashboard() {
       </section>
 
       <WeekStrip trainedDays={trainedDays} goal={profile.weeklyGoal} />
+
+      {workouts.length > 0 ? <RecoveryCard workouts={workouts} /> : null}
 
       {!active ? (
         <section>

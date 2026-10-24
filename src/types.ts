@@ -39,6 +39,8 @@ export interface WorkoutExercise {
   tracksWeight: boolean
   sets: WorkoutSet[]
   notes?: string
+  /** Exercises sharing an id are a superset — done back-to-back with no rest between. */
+  supersetId?: string
 }
 
 export interface Workout {
@@ -89,4 +91,19 @@ export interface PersonalRecord {
   bestReps: number
   estimated1rmKg: number
   date: string
+}
+
+/** A reusable workout template saved by the user (Hevy / Strong "routines"). */
+export interface Routine {
+  id: string
+  name: string
+  exercises: Array<{
+    exerciseId: string
+    name: string
+    muscle: MuscleGroup
+    tracksWeight: boolean
+    sets: number
+    supersetId?: string
+  }>
+  createdAt: string
 }

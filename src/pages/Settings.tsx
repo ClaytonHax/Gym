@@ -19,6 +19,7 @@ import { useExercises } from '../hooks/useExercises'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { MUSCLE_COLORS } from '../data/exercises'
+import { workoutsToCsv } from '../lib/csv'
 import { kgTo, toKg } from '../lib/units'
 import type { Profile, Unit } from '../types'
 
@@ -71,6 +72,17 @@ export function Settings() {
     a.click()
     URL.revokeObjectURL(url)
     toast('Export downloaded.')
+  }
+
+  function exportCsv() {
+    const blob = new Blob([workoutsToCsv(workouts)], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `gym-tracker-sets-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast('CSV downloaded.')
   }
 
   return (
@@ -237,6 +249,9 @@ export function Settings() {
           </p>
           <Button variant="secondary" full icon="download" onClick={exportData}>
             Export as JSON
+          </Button>
+          <Button variant="secondary" full icon="download" onClick={exportCsv}>
+            Export sets as CSV
           </Button>
           <p className="flex items-start gap-2 text-xs text-[var(--color-fg-muted)]">
             <Icon name="note" size={14} className="mt-0.5 shrink-0" />

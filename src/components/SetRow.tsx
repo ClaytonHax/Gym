@@ -4,6 +4,12 @@ import { useUnit } from '../contexts/SettingsContext'
 import { kgTo, step, toKg } from '../lib/units'
 import type { WorkoutSet } from '../types'
 
+/** Tap to cycle 6 → 10 → off, the same quick-entry pattern Hevy uses. Firestore rejects undefined, so callers must drop the key. */
+function nextRpe(rpe?: number): number | undefined {
+  if (!rpe) return 6
+  return rpe >= 10 ? undefined : rpe + 1
+}
+
 /**
  * One editable set. The weight/reps fields hold display-unit strings while being
  * typed (so a half-typed "12." doesn't get mangled) and commit to kg on change.
@@ -133,9 +139,20 @@ export function SetRow({
         placeholder={placeholder ? String(placeholder.reps) : '0'}
         className="tabular min-h-10 w-14 shrink-0 rounded-lg border border-transparent bg-[var(--color-surface)] px-1 text-center font-semibold text-[var(--color-fg)] outline-none focus:border-brand-500"
       />
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
-        reps
-      </span>
+      <button
+        type="button"
+        onClick={() => onChange({ rpe: nextRpe(set.rpe) })}
+        aria-label={set.rpe ? `Set ${index + 1} RPE ${set.rpe}, tap to change` : `Set ${index + 1}: add RPE`}
+        title="Rate of perceived exertion"
+        className={`tabular grid h-9 w-9 shrink-0 place-items-center rounded-lg text-[10px] font-bold uppercase
+          tracking-wider transition-colors duration-200 ${
+            set.rpe
+              ? 'bg-violet-500/20 text-violet-300'
+              : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)]'
+          }`}
+      >
+        {set.rpe ? `@${set.rpe}` : 'RPE'}
+      </button>
 
       <button
         type="button"

@@ -11,17 +11,19 @@ import {
   Spinner,
 } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
+import { PlateCalculator } from '../components/PlateCalculator'
 import { RestTimer, type RestTimerHandle } from '../components/RestTimer'
 import { SetRow } from '../components/SetRow'
 import { useSettings } from '../contexts/SettingsContext'
 import { useToast } from '../contexts/ToastContext'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
+import { useRoutines } from '../hooks/useRoutines'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { BUILTIN_EXERCISES, MUSCLE_COLORS, TEMPLATES } from '../data/exercises'
 import { fmtDuration } from '../lib/date'
 import { fmtVolume, fmtWeight } from '../lib/units'
-import { completedSetCount, lastPerformance, volumeOf } from '../lib/stats'
-import type { ActiveWorkout, Exercise, WorkoutExercise, WorkoutSet } from '../types'
+import { completedSetCount, estimate1rm, lastPerformance, personalRecords, volumeOf } from '../lib/stats'
+import type { ActiveWorkout, Exercise, Routine, WorkoutExercise, WorkoutSet } from '../types'
 
 function emptySet(): WorkoutSet {
   return { weightKg: 0, reps: 0, done: false }
@@ -37,6 +39,11 @@ function toWorkoutExercise(ex: Exercise): WorkoutExercise {
   }
 }
 
+/** Firestore rejects `undefined` fields, so cleared optionals must be dropped, not set. */
+function dropUndefined<T extends object>(obj: T): T {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T
+}
+
 function defaultName(): string {
   const h = new Date().getHours()
   const part = h < 12 ? 'Morning' : h < 18 ? 'Afternoon' : 'Evening'
@@ -49,6 +56,19 @@ function defaultName(): string {
 
 function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void }) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  const { routines, deleteRoutine } = useRoutines()
+  const toast = useToast()
+
+  function startRoutine(routine: Routine) {
+    onStart({
+      name: routine.name,
+      startedAt: new Date().toISOString(),
+      exercises: routine.exercises.map(({ sets, ...ex }) => ({
+        ...ex,
+        sets: Array.from({ length: sets }, emptySet),
+      })),
+    })
+  }
 
   function startBlank(exercises: WorkoutExercise[] = []) {
     onStart({ name: defaultName(), startedAt: new Date().toISOString(), exercises })
@@ -76,6 +96,36 @@ function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void })
       <Button size="lg" variant="go" full icon="play" onClick={() => startBlank()}>
         Start empty workout
       </Button>
+
+      {routines.length > 0 ? (
+        <section>
+          <h2 className="mb-3 text-lg font-semibold">My routines</h2>
+          <ul className="flex flex-col gap-2">
+            {routines.map((r) => (
+              <li key={r.id} className="card flex items-center gap-2 p-2 pl-3.5">
+                <button
+                  type="button"
+                  onClick={() => startRoutine(r)}
+                  className="min-w-0 flex-1 py-1.5 text-left"
+                >
+                  <span className="block truncate font-semibold">{r.name}</span>
+                  <span className="block truncate text-xs text-[var(--color-fg-muted)]">
+                    {r.exercises.length} exercises · {r.exercises.map((e) => e.name).join(', ')}
+                  </span>
+                </button>
+                <IconButton
+                  icon="trash"
+                  label={`Delete routine ${r.name}`}
+                  onClick={() => {
+                    void deleteRoutine(r.id).then(() => toast('Routine deleted.', 'info'))
+                  }}
+                  className="hover:bg-rose-500/15 hover:text-rose-400"
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section>
         <h2 className="mb-3 text-lg font-semibold">Templates</h2>
@@ -122,6 +172,7 @@ export function WorkoutActive() {
   const unit = profile.unit
   const { active, save, hydrated } = useActiveWorkout()
   const { workouts, saveWorkout } = useWorkouts()
+  const { saveRoutine } = useRoutines()
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
@@ -130,6 +181,8 @@ export function WorkoutActive() {
   const [renaming, setRenaming] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [saving, setSaving] = useState(false)
+  const [saveAsRoutine, setSaveAsRoutine] = useState(false)
+  const [platesFor, setPlatesFor] = useState<number | null>(null)
   const timerRef = useRef<RestTimerHandle | null>(null)
 
   const onTimerReady = useCallback((handle: RestTimerHandle) => {
@@ -154,6 +207,11 @@ export function WorkoutActive() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [active])
+
+  const records = useMemo(
+    () => new Map(personalRecords(workouts).map((r) => [r.exerciseId, r.estimated1rmKg])),
+    [workouts]
+  )
 
   const volume = useMemo(() => (active ? volumeOf(active.exercises) : 0), [active])
   const setsDone = useMemo(() => (active ? completedSetCount(active.exercises) : 0), [active])
@@ -204,8 +262,45 @@ export function WorkoutActive() {
       ...e,
       sets: e.sets.map((s, i) => (i === setIndex ? { ...s, done: !s.done } : s)),
     }))
-    // Completing a working set kicks off rest automatically.
-    if (!wasDone && !ex?.sets[setIndex]?.warmup) timerRef.current?.start()
+    const set = ex?.sets[setIndex]
+    if (wasDone || !ex || !set || set.warmup) return
+
+    // Live PR check against history — a first-ever session has nothing to beat.
+    const prior = records.get(ex.exerciseId)
+    if (ex.tracksWeight && prior && estimate1rm(set.weightKg, set.reps) > prior + 0.01) {
+      toast(`New PR on ${ex.name}! 🏆`)
+    }
+
+    // Superset partners go back-to-back; rest only after the last exercise in the group.
+    const next = active?.exercises[exIndex + 1]
+    const mid = Boolean(ex.supersetId) && next?.supersetId === ex.supersetId
+    if (!mid) timerRef.current?.start()
+  }
+
+  function toggleSuperset(index: number) {
+    patch((draft) => {
+      const a = draft.exercises[index]
+      const b = draft.exercises[index + 1]
+      if (!a || !b) return draft
+      const strip = (e: WorkoutExercise): WorkoutExercise => {
+        const { supersetId: _unused, ...rest } = e
+        return rest
+      }
+      let exercises: WorkoutExercise[]
+      if (a.supersetId && a.supersetId === b.supersetId) {
+        // Unlink b; a stays grouped only if something earlier still shares its id.
+        const stillGrouped = draft.exercises.some((e, i) => i < index && e.supersetId === a.supersetId)
+        exercises = draft.exercises.map((e, i) =>
+          i === index + 1 || (i === index && !stillGrouped) ? strip(e) : e
+        )
+      } else {
+        const id = a.supersetId ?? `ss-${Date.now().toString(36)}`
+        exercises = draft.exercises.map((e, i) =>
+          i === index || i === index + 1 ? { ...e, supersetId: id } : e
+        )
+      }
+      return { ...draft, exercises }
+    })
   }
 
   function copyLastTime(exIndex: number) {
@@ -239,7 +334,13 @@ export function WorkoutActive() {
     try {
       // Drop unlogged sets and empty exercises so history stays clean.
       const exercises = active.exercises
-        .map((ex) => ({ ...ex, sets: ex.sets.filter((s) => s.done) }))
+        .map((ex) =>
+          dropUndefined({
+            ...ex,
+            notes: ex.notes?.trim() || undefined,
+            sets: ex.sets.filter((s) => s.done),
+          })
+        )
         .filter((ex) => ex.sets.length > 0)
 
       if (exercises.length === 0) {
@@ -254,8 +355,24 @@ export function WorkoutActive() {
         finishedAt: new Date().toISOString(),
         durationSec: Math.round((Date.now() - new Date(active.startedAt).getTime()) / 1000),
         exercises,
-        notes: active.notes,
+        ...(active.notes ? { notes: active.notes } : {}),
       })
+      if (saveAsRoutine) {
+        await saveRoutine({
+          name: active.name.trim() || defaultName(),
+          exercises: exercises.map((ex) =>
+            dropUndefined({
+              exerciseId: ex.exerciseId,
+              name: ex.name,
+              muscle: ex.muscle,
+              tracksWeight: ex.tracksWeight,
+              sets: ex.sets.filter((s) => !s.warmup).length || ex.sets.length,
+              supersetId: ex.supersetId,
+            })
+          ),
+        })
+      }
+      setSaveAsRoutine(false)
       save(null)
       setFinishOpen(false)
       toast('Workout saved. Nice work.')
@@ -335,12 +452,17 @@ export function WorkoutActive() {
           {active.exercises.map((ex, exIndex) => {
             const last = lastPerformance(workouts, ex.exerciseId)
             return (
-              <Card as="li" key={`${ex.exerciseId}-${exIndex}`} className="p-3">
+              <Card
+                as="li"
+                key={`${ex.exerciseId}-${exIndex}`}
+                className={`p-3 ${ex.supersetId ? 'border-l-4 border-l-violet-500' : ''}`}
+              >
                 <div className="mb-2.5 flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="truncate text-base font-semibold">{ex.name}</h2>
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
+                      {ex.supersetId ? <Badge color="#8b5cf6">Superset</Badge> : null}
                     </div>
                     {last ? (
                       <p className="tabular mt-0.5 truncate text-xs text-[var(--color-fg-muted)]">
@@ -401,7 +523,9 @@ export function WorkoutActive() {
                       onChange={(setPatch) =>
                         updateExercise(exIndex, (e) => ({
                           ...e,
-                          sets: e.sets.map((s, i) => (i === setIndex ? { ...s, ...setPatch } : s)),
+                          sets: e.sets.map((s, i) =>
+                            i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
+                          ),
                         }))
                       }
                       onToggleDone={() => toggleSetDone(exIndex, setIndex)}
@@ -414,6 +538,48 @@ export function WorkoutActive() {
                     />
                   ))}
                 </ul>
+
+                {ex.notes !== undefined ? (
+                  <textarea
+                    rows={2}
+                    value={ex.notes}
+                    onChange={(e) => updateExercise(exIndex, (x) => ({ ...x, notes: e.target.value }))}
+                    aria-label={`Notes for ${ex.name}`}
+                    placeholder="Cues, seat height, how it felt…"
+                    className="mt-2 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2.5 text-sm outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500"
+                  />
+                ) : null}
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {ex.tracksWeight ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPlatesFor(ex.sets.find((s) => !s.warmup)?.weightKg ?? ex.sets[0]?.weightKg ?? 0)
+                      }
+                      className="chip"
+                    >
+                      <Icon name="calculator" size={13} /> Plates
+                    </button>
+                  ) : null}
+                  {exIndex < active.exercises.length - 1 ? (
+                    <button type="button" onClick={() => toggleSuperset(exIndex)} className="chip">
+                      <Icon name="link" size={13} />
+                      {ex.supersetId && ex.supersetId === active.exercises[exIndex + 1].supersetId
+                        ? 'Unlink superset'
+                        : 'Superset with next'}
+                    </button>
+                  ) : null}
+                  {ex.notes === undefined ? (
+                    <button
+                      type="button"
+                      onClick={() => updateExercise(exIndex, (x) => ({ ...x, notes: '' }))}
+                      className="chip"
+                    >
+                      <Icon name="note" size={13} /> Note
+                    </button>
+                  ) : null}
+                </div>
 
                 <button
                   type="button"
@@ -450,6 +616,7 @@ export function WorkoutActive() {
       </Button>
 
       <ExercisePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={addExercises} />
+      <PlateCalculator open={platesFor !== null} onClose={() => setPlatesFor(null)} initialKg={platesFor ?? 0} />
 
       <Sheet
         open={notesOpen}
@@ -503,7 +670,16 @@ export function WorkoutActive() {
             </div>
           ))}
         </dl>
-        <p className="mt-4 text-sm text-[var(--color-fg-muted)]">
+        <label className="mt-4 flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={saveAsRoutine}
+            onChange={(e) => setSaveAsRoutine(e.target.checked)}
+            className="size-5 accent-[var(--color-brand-500)]"
+          />
+          Save as a routine
+        </label>
+        <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
           Incomplete sets are discarded — only the sets you ticked off get saved.
         </p>
       </Sheet>
