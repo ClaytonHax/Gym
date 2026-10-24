@@ -44,6 +44,8 @@ export function PlateCalculator({
           <input
             type="number"
             inputMode="decimal"
+            enterKeyHint="done"
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             value={target}
             onChange={(e) => setTarget(e.target.value)}
             className="tabular min-h-12 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-lg font-semibold outline-none focus:border-brand-500"

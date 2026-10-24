@@ -152,6 +152,7 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
           <>
             <Field
               label="Username"
+              enterKeyHint="next"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoCapitalize="none"
@@ -181,6 +182,7 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
           label={`Current weight (${unit})`}
           type="number"
           inputMode="decimal"
+          enterKeyHint="next"
           step="0.1"
           min="0"
           value={weight}
@@ -194,6 +196,7 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
           label={`Goal weight (${unit})`}
           type="number"
           inputMode="decimal"
+          enterKeyHint="done"
           step="0.1"
           min="0"
           value={goal}

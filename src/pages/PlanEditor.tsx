@@ -171,6 +171,8 @@ export function PlanEditor() {
       <label className="flex flex-col gap-1.5 text-sm font-semibold">
         Plan name
         <input
+          enterKeyHint="done"
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           value={draft.name}
           onChange={(e) => patchDraft({ name: e.target.value })}
           placeholder="e.g. Push / Pull / Legs"

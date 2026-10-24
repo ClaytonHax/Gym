@@ -180,16 +180,23 @@ export function NudgeSheet({
           })}
         </div>
       </fieldset>
-      <div className="mt-4">
+      <form
+        className="mt-4"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!sending) void send()
+        }}
+      >
         <Field
           label="Or write your own"
+          enterKeyHint="send"
           value={custom}
           maxLength={140}
           onChange={(e) => setCustom(e.target.value)}
           placeholder="Leg day waits for no one…"
           hint={`${custom.length}/140`}
         />
-      </div>
+      </form>
     </Sheet>
   )
 }
@@ -436,20 +443,35 @@ export function AddFriendSheet({ open, onClose }: { open: boolean; onClose: () =
   }, [q, searchUsers])
 
   return (
-    <Sheet open={open} onClose={onClose} title="Add friends">
-      <Field
-        label="Search by username"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="@username"
-        autoCapitalize="none"
-        autoCorrect="off"
-        spellCheck={false}
-        inputMode="search"
-        suffix={searching ? <Spinner size={16} /> : <Icon name="search" size={18} />}
-      />
-
-      <ul className="mt-3 flex flex-col gap-1" aria-live="polite">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Add friends"
+      size="full"
+      pinned={
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            // Search runs as you type; Go just dismisses the keyboard to show results.
+            ;(document.activeElement as HTMLElement | null)?.blur()
+          }}
+        >
+          <Field
+            label="Search by username"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="@username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="search"
+            enterKeyHint="search"
+            suffix={searching ? <Spinner size={16} /> : <Icon name="search" size={18} />}
+          />
+        </form>
+      }
+    >
+      <ul className="flex flex-col gap-1" aria-live="polite">
         {results.map((p) => (
           <li key={p.uid} className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-1.5">
             <Avatar uid={p.uid} name={p.displayName || p.username} size={40} />

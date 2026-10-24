@@ -334,6 +334,7 @@ export function Body() {
             label={`Weight (${unit})`}
             type="number"
             inputMode="decimal"
+            enterKeyHint="next"
             step="0.1"
             min="0"
             value={weight}
@@ -347,6 +348,7 @@ export function Body() {
             label="Body fat (optional)"
             type="number"
             inputMode="decimal"
+            enterKeyHint="done"
             step="0.1"
             min="0"
             max="70"

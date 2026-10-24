@@ -95,6 +95,49 @@ export function ExercisePicker({
       open={open}
       onClose={close}
       title={creating ? 'New exercise' : 'Add exercises'}
+      size={creating ? 'auto' : 'full'}
+      pinned={
+        creating ? undefined : (
+          <div className="flex flex-col gap-3">
+          <div className="relative">
+            <Icon
+              name="search"
+              size={18}
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-fg-muted)]"
+            />
+            <input
+              type="search"
+              enterKeyHint="search"
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search exercises"
+              aria-label="Search exercises"
+              className="min-h-12 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] pl-11 pr-3.5 text-[var(--color-fg)] placeholder:text-[var(--color-fg-muted)] outline-none focus:border-brand-500"
+            />
+          </div>
+
+          <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+            {(['All', ...MUSCLE_GROUPS] as Array<MuscleGroup | 'All'>).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMuscle(m)}
+                aria-pressed={muscle === m}
+                className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold
+                  uppercase tracking-wider transition-colors duration-200 ${
+                    muscle === m
+                      ? 'border-brand-500 bg-brand-500 text-ink-950'
+                      : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
+                  }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+          </div>
+        )
+      }
       footer={
         creating ? undefined : (
           <Button full size="lg" onClick={confirm} disabled={selected.length === 0}>
@@ -165,41 +208,6 @@ export function ExercisePicker({
         </form>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="relative">
-            <Icon
-              name="search"
-              size={18}
-              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-fg-muted)]"
-            />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search exercises"
-              aria-label="Search exercises"
-              className="min-h-12 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] pl-11 pr-3.5 text-[var(--color-fg)] placeholder:text-[var(--color-fg-muted)] outline-none focus:border-brand-500"
-            />
-          </div>
-
-          <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-            {(['All', ...MUSCLE_GROUPS] as Array<MuscleGroup | 'All'>).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMuscle(m)}
-                aria-pressed={muscle === m}
-                className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold
-                  uppercase tracking-wider transition-colors duration-200 ${
-                    muscle === m
-                      ? 'border-brand-500 bg-brand-500 text-ink-950'
-                      : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
-                  }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-
           {filtered.length === 0 ? (
             <p className="py-6 text-center text-sm text-[var(--color-fg-muted)]">
               No exercises match “{search}”.

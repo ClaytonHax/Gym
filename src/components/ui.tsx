@@ -5,6 +5,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
   type InputHTMLAttributes,
@@ -339,15 +340,16 @@ export function Toggle({
 }) {
   const id = useId()
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="min-w-0">
-        <label htmlFor={id} className="block font-medium text-[var(--color-fg)]">
-          {label}
-        </label>
+    // The whole row is the label, so tapping the text toggles too.
+    <label htmlFor={id} className="flex cursor-pointer items-center justify-between gap-4">
+      <span className="min-w-0">
+        <span className="block font-medium text-[var(--color-fg)]">{label}</span>
         {description ? (
-          <p className="text-sm text-[var(--color-fg-muted)]">{description}</p>
+          <span className="block text-sm text-[var(--color-fg-muted)]">{description}</span>
         ) : null}
-      </div>
+      </span>
+      {/* The button is only the 44px hit area (the global min-height rule would
+          otherwise stretch a 28px track into a blob); the track is drawn inside. */}
       <button
         id={id}
         type="button"
@@ -355,15 +357,20 @@ export function Toggle({
         aria-checked={checked}
         aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-200
-          ${checked ? 'bg-brand-500' : 'bg-[var(--color-line)]'}`}
+        className="flex min-h-11 w-14 shrink-0 items-center justify-center"
       >
         <span
-          className={`absolute top-1 size-5 rounded-full bg-white transition-transform duration-200
-            ${checked ? 'translate-x-6' : 'translate-x-1'}`}
-        />
+          aria-hidden="true"
+          className={`relative block h-7 w-12 rounded-full transition-colors duration-200
+            ${checked ? 'bg-brand-500' : 'bg-[var(--color-line)]'}`}
+        >
+          <span
+            className={`absolute left-1 top-1 block size-5 rounded-full bg-white shadow-sm shadow-black/30
+              transition-transform duration-200 ${checked ? 'translate-x-5' : 'translate-x-0'}`}
+          />
+        </span>
       </button>
-    </div>
+    </label>
   )
 }
 
@@ -371,9 +378,52 @@ export function Toggle({
 /* Overlays & feedback                                                         */
 /* -------------------------------------------------------------------------- */
 
+interface ViewportBox {
+  height: number
+  top: number
+}
+
+/**
+ * Tracks the *visual* viewport. On iOS the on-screen keyboard overlays the page
+ * without shrinking the layout viewport, so `100dvh`/`inset-0` still extend
+ * behind it. `visualViewport` reports the area that is really visible.
+ * Returns null where the API is missing (callers fall back to plain `inset-0`).
+ */
+function useVisualViewport(enabled: boolean): ViewportBox | null {
+  const [box, setBox] = useState<ViewportBox | null>(null)
+
+  useEffect(() => {
+    const vv = typeof window === 'undefined' ? undefined : window.visualViewport
+    if (!enabled || !vv) {
+      setBox(null)
+      return
+    }
+    const read = () => {
+      const next = { height: Math.round(vv.height), top: Math.round(vv.offsetTop) }
+      setBox((prev) => (prev && prev.height === next.height && prev.top === next.top ? prev : next))
+    }
+    read()
+    vv.addEventListener('resize', read)
+    vv.addEventListener('scroll', read)
+    return () => {
+      vv.removeEventListener('resize', read)
+      vv.removeEventListener('scroll', read)
+    }
+  }, [enabled])
+
+  return box
+}
+
+const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
+
 /**
  * Bottom sheet — the thumb-friendly modal pattern for phones. Traps focus,
- * closes on Escape, and locks background scroll while open.
+ * closes on Escape, and locks background scroll while open. It sizes itself to
+ * the visual viewport so the on-screen keyboard never covers the body/footer.
+ *
+ * `size="full"` is for search-style sheets: the panel fills the visible height,
+ * `pinned` (the search input) stays put under the header and `children` scroll
+ * beneath it, so results remain visible above the keyboard.
  */
 export function Sheet({
   open,
@@ -381,20 +431,48 @@ export function Sheet({
   title,
   children,
   footer,
+  pinned,
+  size = 'auto',
 }: {
   open: boolean
   onClose: () => void
   title: string
   children: ReactNode
   footer?: ReactNode
+  /** Rendered under the header and outside the scroll area (e.g. a search field). */
+  pinned?: ReactNode
+  size?: 'auto' | 'full'
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const viewport = useVisualViewport(open)
   const titleId = useId()
   // Callers usually pass an inline arrow. Reading it through a ref keeps the
   // effect below from re-running on every keystroke, which used to steal focus
   // and dismiss the iOS keyboard mid-typing.
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const sizeRef = useRef(size)
+  sizeRef.current = size
+
+  // Keep the focused field visible inside the scrolling body: when it gains
+  // focus, and again whenever the keyboard resizes the visual viewport.
+  const revealFocused = () => {
+    const el = document.activeElement
+    if (!(el instanceof HTMLElement) || !el.matches(EDITABLE)) return
+    if (!bodyRef.current?.contains(el)) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView?.({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
+  }
+  const revealRef = useRef(revealFocused)
+  revealRef.current = revealFocused
+
+  const viewportHeight = viewport?.height
+  // With the keyboard up the home-indicator inset is covered; skip that padding.
+  const keyboardUp = viewport !== null && window.innerHeight - viewport.height > 120
+  useEffect(() => {
+    if (open && viewportHeight !== undefined) revealRef.current()
+  }, [open, viewportHeight])
 
   useEffect(() => {
     if (!open) return
@@ -425,9 +503,17 @@ export function Sheet({
     }
 
     document.addEventListener('keydown', onKeyDown)
-    // Defer so the panel exists before we move focus into it.
+    // Defer so the panel exists before we move focus into it. Only search-style
+    // sheets pop the keyboard on open; elsewhere an autofocused field wins,
+    // otherwise focus the panel so a keyboard doesn't cover the content.
     const raf = requestAnimationFrame(() => {
-      panelRef.current?.querySelector<HTMLElement>('input, button')?.focus()
+      const panel = panelRef.current
+      if (!panel) return
+      if (sizeRef.current === 'full') {
+        panel.querySelector<HTMLElement>('input, button')?.focus()
+      } else if (!panel.contains(document.activeElement)) {
+        panel.focus({ preventScroll: true })
+      }
     })
 
     return () => {
@@ -443,7 +529,11 @@ export function Sheet({
   // Portal to <body>: an animated/transformed ancestor would otherwise become the
   // containing block for `position: fixed` and push the sheet off-screen.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div
+      className="fixed inset-x-0 z-50 flex items-end justify-center sm:items-center"
+      // Track the visible area above the keyboard; plain full-screen as a fallback.
+      style={viewport ? { top: viewport.top, height: viewport.height } : { top: 0, bottom: 0 }}
+    >
       <div
         className="animate-fade absolute inset-0 bg-ink-950/70 backdrop-blur-sm"
         onClick={onClose}
@@ -454,9 +544,16 @@ export function Sheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="animate-sheet-up relative flex max-h-[90dvh] w-full flex-col
-          rounded-t-3xl border border-[var(--color-line)] bg-[var(--color-surface)]
-          shadow-2xl sm:max-w-lg sm:rounded-3xl"
+        tabIndex={-1}
+        // focusin bubbles; wait a beat for the keyboard to finish animating in.
+        onFocus={() => window.setTimeout(() => revealRef.current(), 300)}
+        className={`animate-sheet-up relative flex w-full flex-col outline-none
+          border border-[var(--color-line)] bg-[var(--color-surface)] shadow-2xl
+          sm:max-w-lg sm:rounded-3xl ${
+            size === 'full'
+              ? 'h-full max-h-full rounded-t-2xl sm:h-auto sm:max-h-[85%]'
+              : 'max-h-[92%] rounded-t-3xl sm:max-h-[90%]'
+          }`}
       >
         <span
           className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-[var(--color-line)] sm:hidden"
@@ -468,9 +565,14 @@ export function Sheet({
           </h2>
           <IconButton icon="x" label="Close" onClick={onClose} />
         </div>
-        <div className="flex-1 overflow-y-auto overscroll-contain p-4">{children}</div>
+        {pinned ? <div className="shrink-0 px-4 pt-3">{pinned}</div> : null}
+        <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
+          {children}
+        </div>
         {footer ? (
-          <div className="safe-bottom border-t border-[var(--color-line)] p-4">{footer}</div>
+          <div
+            className={`${keyboardUp ? '' : 'safe-bottom '}border-t border-[var(--color-line)] p-4`}
+          >{footer}</div>
         ) : null}
       </div>
     </div>,

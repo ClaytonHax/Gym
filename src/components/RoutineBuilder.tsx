@@ -70,6 +70,8 @@ export function RoutineBuilder({
           <label className="flex flex-col gap-1.5 text-sm font-semibold">
             Name
             <input
+              enterKeyHint="done"
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Arms & Abs"

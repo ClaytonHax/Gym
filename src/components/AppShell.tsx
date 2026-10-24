@@ -112,7 +112,7 @@ export function AppShell() {
 
       <nav
         aria-label="Main"
-        className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-[var(--color-line)]
+        className="kb-hide safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-[var(--color-line)]
           bg-[var(--color-surface)]/95 shadow-[0_-12px_32px_-20px_rgb(0,0,0,0.6)] backdrop-blur-lg"
       >
         <ActiveWorkoutBar />

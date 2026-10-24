@@ -86,8 +86,15 @@ export function UsernameCard() {
           </Button>
         }
       >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (status === 'free' && !saving) void save()
+          }}
+        >
         <Field
           label="Username"
+          enterKeyHint="done"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           autoCapitalize="none"
@@ -106,6 +113,7 @@ export function UsernameCard() {
           error={error ?? (status === 'taken' ? 'That username is taken.' : undefined)}
           hint={status === 'free' ? 'Available!' : '3–20 characters: letters, numbers, dots and underscores.'}
         />
+        </form>
         <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-400">
           <Icon name="clock" size={16} className="mt-0.5 shrink-0" />
           {me.freeChange

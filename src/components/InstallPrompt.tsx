@@ -222,7 +222,7 @@ function Banner({
   dismissLabel: string
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 px-4">
+    <div className="kb-hide fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 px-4">
       <div className="animate-rise mx-auto flex max-w-2xl items-center gap-3 rounded-2xl border border-brand-500/40 bg-[var(--color-surface)] p-3 shadow-2xl shadow-ink-950/40">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
           <Icon name={icon} size={20} />

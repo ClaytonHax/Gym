@@ -352,3 +352,12 @@ button {
 .animate-pop {
   animation: pop 0.3s var(--ease-out-soft) both;
 }
+
+/* Touch devices: while a text field is focused the on-screen keyboard is up, so
+   fixed bottom chrome (nav, install banner) would float over the field. */
+@media (pointer: coarse) {
+  html[data-editing] .kb-hide {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
