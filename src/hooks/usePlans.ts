@@ -54,6 +54,10 @@ export function usePlans(): UsePlans {
           .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       )
       setPlansLoaded(true)
+    }, (err) => {
+      // Don't leave the UI on a skeleton forever (e.g. rules not deployed).
+      console.error('plans listener failed', err)
+      setPlansLoaded(true)
     })
   }, [user])
 
@@ -70,6 +74,9 @@ export function usePlans(): UsePlans {
           ? { planId: data.planId, startDate: data.startDate, adjustments: data.adjustments ?? [] }
           : null
       )
+      setStateLoaded(true)
+    }, (err) => {
+      console.error('active plan listener failed', err)
       setStateLoaded(true)
     })
   }, [user])
