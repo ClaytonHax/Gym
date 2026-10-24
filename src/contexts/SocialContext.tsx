@@ -67,9 +67,18 @@ interface SocialValue {
   challenges: Challenge[]
   push: PushState
   isFriend: (uid: string) => boolean
+  /**
+   * Current public profile for any uid (you, friends, or anyone watched via
+   * useProfile/useProfiles). undefined while loading or if it doesn't exist.
+   */
+  profileOf: (uid: string) => PublicProfile | undefined
+  /** Start streaming a profile; returns the release function. Prefer the hooks. */
+  watchProfile: (uid: string) => () => void
   lookupUsername: (name: string) => Promise<PublicProfile | null>
   searchUsers: (prefix: string) => Promise<PublicProfile[]>
   changeUsername: (next: string) => Promise<void>
+  /** Keep the current (auto-assigned) username and end the free-change window. */
+  confirmUsername: () => Promise<void>
   sendRequest: (target: PublicProfile) => Promise<'sent' | 'accepted'>
   acceptRequest: (req: FriendRequest) => Promise<void>
   declineRequest: (req: FriendRequest) => Promise<void>
@@ -145,6 +154,8 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const meRef = useRef<PublicProfile | null>(null)
   meRef.current = me
+  const profilesRef = useRef(profiles)
+  profilesRef.current = profiles
   const friendIdsRef = useRef<string[]>([])
   friendIdsRef.current = friendIds.map((f) => f.uid)
 
@@ -159,41 +170,67 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       setMe(null)
       return
     }
+    const owner: string = uid
     let creating = false
-    return onSnapshot(
+    let missing = false
+    let retry: number | undefined
+    let disposed = false
+
+    // Everyone gets a handle automatically; the first rename is free.
+    async function create() {
+      if (creating || disposed) return
+      creating = true
+      let ok = false
+      for (let attempt = 0; attempt < 6 && !ok; attempt++) {
+        const name = suggestUsername(seedRef.current)
+        const batch = writeBatch(db)
+        batch.set(doc(db, 'usernames', name), { uid: owner })
+        batch.set(doc(db, 'profiles', owner), {
+          username: name,
+          displayName: seedRef.current.slice(0, 40),
+          joinedAt: serverTimestamp(),
+          usernameChangedAt: serverTimestamp(),
+          freeChange: true,
+        })
+        try {
+          await batch.commit()
+          ok = true
+        } catch (err) {
+          // Taken (or offline / rules not deployed yet): try another number.
+          console.warn('username claim failed', err)
+        }
+      }
+      creating = false
+      // Don't give up for good: try again shortly, or as soon as we're back online.
+      if (!ok && missing && !disposed) retry = window.setTimeout(create, 20_000)
+    }
+    const onOnline = () => {
+      if (missing) void create()
+    }
+    window.addEventListener('online', onOnline)
+
+    const unsub = onSnapshot(
       doc(db, 'profiles', uid),
-      async (snap) => {
+      (snap) => {
         if (snap.exists()) {
+          missing = false
+          window.clearTimeout(retry)
           setMe(toProfile(uid, snap.data()) ?? null)
           return
         }
         // Only trust "missing" from the server, never from an empty offline cache.
-        if (snap.metadata.fromCache || creating) return
-        creating = true
-        // Everyone gets a handle automatically; the first rename is free.
-        for (let attempt = 0; attempt < 6; attempt++) {
-          const name = suggestUsername(seedRef.current)
-          const batch = writeBatch(db)
-          batch.set(doc(db, 'usernames', name), { uid })
-          batch.set(doc(db, 'profiles', uid), {
-            username: name,
-            displayName: seedRef.current.slice(0, 40),
-            joinedAt: serverTimestamp(),
-            usernameChangedAt: serverTimestamp(),
-            freeChange: true,
-          })
-          try {
-            await batch.commit()
-            break
-          } catch (err) {
-            // Taken (or rules not deployed yet): try another number, then give up quietly.
-            console.warn('username claim failed', err)
-          }
-        }
-        creating = false
+        if (snap.metadata.fromCache) return
+        missing = true
+        void create()
       },
       (err) => console.error('profile listener failed', err)
     )
+    return () => {
+      disposed = true
+      window.clearTimeout(retry)
+      window.removeEventListener('online', onOnline)
+      unsub()
+    }
   }, [uid])
 
   // Keep the public display name in step with Settings.
@@ -209,6 +246,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!uid) {
       setFriendIds([])
+      setFriendsLoading(false)
       return
     }
     setFriendsLoading(true)
@@ -225,17 +263,57 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     )
   }, [uid])
 
+  /* --------------------------- profile cache ----------------------------- */
+
+  // Refcounted listeners so every screen showing someone shares one stream.
+  const watchers = useRef(new Map<string, { count: number; unsub: () => void }>())
+
+  const watchProfile = useCallback(
+    (target: string) => {
+      if (!uid || !target) return () => {}
+      const map = watchers.current
+      const existing = map.get(target)
+      if (existing) existing.count++
+      else {
+        const unsub = onSnapshot(
+          doc(db, 'profiles', target),
+          (snap) => setProfiles((p) => ({ ...p, [target]: toProfile(target, snap.data()) })),
+          (err) => console.warn('profile listener failed', err)
+        )
+        map.set(target, { count: 1, unsub })
+      }
+      let released = false
+      return () => {
+        if (released) return
+        released = true
+        const w = map.get(target)
+        if (!w) return
+        if (--w.count <= 0) {
+          w.unsub()
+          map.delete(target)
+        }
+      }
+    },
+    [uid]
+  )
+
+  // Drop every profile stream (and cached data) when the account changes.
+  useEffect(() => {
+    const map = watchers.current
+    return () => {
+      for (const w of map.values()) w.unsub()
+      map.clear()
+      setProfiles({})
+    }
+  }, [uid])
+
   const friendKey = friendIds.map((f) => f.uid).sort().join(',')
   useEffect(() => {
     if (!friendKey) return
     const unsubs: Array<() => void> = []
     for (const fid of friendKey.split(',')) {
       unsubs.push(
-        onSnapshot(
-          doc(db, 'profiles', fid),
-          (snap) => setProfiles((p) => ({ ...p, [fid]: toProfile(fid, snap.data()) })),
-          () => {}
-        ),
+        watchProfile(fid),
         onSnapshot(
           doc(db, 'users', fid, 'public', 'stats'),
           (snap) => setStats((s) => ({ ...s, [fid]: snap.data() as PublicStats | undefined })),
@@ -245,7 +323,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       )
     }
     return () => unsubs.forEach((u) => u())
-  }, [friendKey])
+  }, [friendKey, watchProfile])
 
   const friends = useMemo<Friend[]>(
     () =>
@@ -267,12 +345,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     const a = onSnapshot(
       query(reqs, where('to', '==', uid)),
       (snap) => setIncoming(snap.docs.map((d) => toRequest(d.id, d.data()))),
-      () => {}
+      (err) => console.warn('incoming requests listener failed', err)
     )
     const b = onSnapshot(
       query(reqs, where('from', '==', uid)),
       (snap) => setOutgoing(snap.docs.map((d) => toRequest(d.id, d.data()))),
-      () => {}
+      (err) => console.warn('outgoing requests listener failed', err)
     )
     return () => {
       a()
@@ -301,7 +379,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           const fresh = snap.docChanges().filter((c) => c.type === 'added' && !c.doc.data().read)
           for (const change of fresh.slice(0, 2)) {
             const n = list.find((x) => x.id === change.doc.id)
-            if (n) toast(describeNotification(n).title, 'info')
+            if (n) toast(describeNotification(n, profilesRef.current[n.from]?.username).title, 'info')
           }
         }
         first = false
@@ -361,16 +439,27 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         const d = snap.data()
         setPush({ deviceCount: Array.isArray(d?.subs) ? d.subs.length : 0, prefs: d?.prefs ?? {} })
       },
-      () => {}
+      (err) => console.warn('push listener failed', err)
     )
   }, [uid])
 
   /* -------------------------------- actions ------------------------------ */
 
+  /** The signed-in uid, or a clear error instead of a silent no-op. */
+  const needUid = useCallback((): string => {
+    if (!uid) throw new Error('Not signed in')
+    return uid
+  }, [uid])
+
+  const needMe = useCallback((): PublicProfile => {
+    const mine = meRef.current
+    if (!uid || !mine) throw new Error('Profile not ready')
+    return mine
+  }, [uid])
+
   const notify = useCallback(
     async (to: string, type: NotificationType, suffix: string, extra: { text?: string; ref?: string } = {}) => {
-      const mine = meRef.current
-      if (!uid || !mine) return
+      const mine = needMe()
       const id = `${type}_${uid}_${suffix}`.slice(0, 120)
       await setDoc(doc(db, 'users', to, 'notifications', id), {
         type,
@@ -381,9 +470,18 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         ...(extra.text ? { text: extra.text.slice(0, 140) } : {}),
         ...(extra.ref ? { ref: extra.ref } : {}),
       })
-      void sendPush(to, id)
+      // Push is best-effort; the in-app notification is already stored.
+      Promise.resolve(sendPush(to, id)).catch((err) => console.warn('push failed', err))
     },
-    [uid]
+    [uid, needMe]
+  )
+
+  /** Fire-and-forget notification: a failure never surfaces to the user. */
+  const notifyQuietly = useCallback(
+    (...args: Parameters<typeof notify>) => {
+      notify(...args).catch((err) => console.warn('notification failed', err))
+    },
+    [notify]
   )
 
   const lookupUsername = useCallback(async (raw: string) => {
@@ -412,25 +510,31 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const changeUsername = useCallback(
     async (raw: string) => {
-      const mine = meRef.current
-      if (!uid || !mine) throw new Error('Profile not ready')
+      const id = needUid()
+      const mine = needMe()
       const next = normalizeUsername(raw)
       const batch = writeBatch(db)
       batch.delete(doc(db, 'usernames', mine.username))
-      batch.set(doc(db, 'usernames', next), { uid })
-      batch.update(doc(db, 'profiles', uid), {
+      batch.set(doc(db, 'usernames', next), { uid: id })
+      batch.update(doc(db, 'profiles', id), {
         username: next,
         usernameChangedAt: serverTimestamp(),
         freeChange: false,
       })
       await batch.commit()
     },
-    [uid]
+    [needUid, needMe]
   )
+
+  const confirmUsername = useCallback(async () => {
+    const id = needUid()
+    needMe()
+    await updateDoc(doc(db, 'profiles', id), { freeChange: false, usernameChangedAt: serverTimestamp() })
+  }, [needUid, needMe])
 
   const acceptRequest = useCallback(
     async (req: FriendRequest) => {
-      if (!uid) return
+      const uid = needUid()
       const batch = writeBatch(db)
       batch.set(doc(db, 'users', uid, 'friends', req.from), { since: serverTimestamp() })
       batch.set(doc(db, 'users', req.from, 'friends', uid), { since: serverTimestamp() })
@@ -438,15 +542,15 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       // A crossed request (both sent one) is cleaned up too.
       if (outgoing.some((o) => o.to === req.from)) batch.delete(doc(db, 'friendRequests', `${uid}_${req.from}`))
       await batch.commit()
-      notify(req.from, 'friend_accept', String(Date.now())).catch(() => {})
+      notifyQuietly(req.from, 'friend_accept', String(Date.now()))
     },
-    [uid, outgoing, notify]
+    [needUid, outgoing, notifyQuietly]
   )
 
   const sendRequest = useCallback(
     async (target: PublicProfile): Promise<'sent' | 'accepted'> => {
-      const mine = meRef.current
-      if (!uid || !mine) throw new Error('Profile not ready')
+      const uid = needUid()
+      const mine = needMe()
       const crossed = incoming.find((r) => r.from === target.uid)
       if (crossed) {
         await acceptRequest(crossed)
@@ -461,10 +565,10 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         toUsername: target.username,
         toName: target.displayName,
       })
-      notify(target.uid, 'friend_request', String(Date.now())).catch(() => {})
+      notifyQuietly(target.uid, 'friend_request', String(Date.now()))
       return 'sent'
     },
-    [uid, incoming, acceptRequest, notify]
+    [needUid, needMe, incoming, acceptRequest, notifyQuietly]
   )
 
   const declineRequest = useCallback(async (req: FriendRequest) => {
@@ -473,13 +577,13 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const unfriend = useCallback(
     async (other: string) => {
-      if (!uid) return
+      const uid = needUid()
       const batch = writeBatch(db)
       batch.delete(doc(db, 'users', uid, 'friends', other))
       batch.delete(doc(db, 'users', other, 'friends', uid))
       await batch.commit()
     },
-    [uid]
+    [needUid]
   )
 
   const nudge = useCallback(
@@ -498,22 +602,22 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const react = useCallback(
     async (owner: string, activityId: string, workoutName: string, reaction: Reaction | null) => {
-      if (!uid) return
+      const uid = needUid()
       await updateDoc(doc(db, 'users', owner, 'activity', activityId), {
         [`reactions.${uid}`]: reaction ?? deleteField(),
       })
       if (reaction && owner !== uid) {
         const label = reaction === 'fire' ? 'Fire' : reaction === 'strong' ? 'Strong' : 'Beast mode'
         // One notification per workout, however many times the reaction changes.
-        notify(owner, 'kudos', activityId, { text: `${label} on ${workoutName}`, ref: activityId }).catch(() => {})
+        notifyQuietly(owner, 'kudos', activityId, { text: `${label} on ${workoutName}`, ref: activityId })
       }
     },
-    [uid, notify]
+    [needUid, notifyQuietly]
   )
 
   const createChallenge = useCallback<SocialValue['createChallenge']>(
     async ({ title, metric, days, members, myScore }) => {
-      if (!uid) return
+      const uid = needUid()
       const start = new Date()
       const end = new Date()
       end.setDate(end.getDate() + days - 1)
@@ -530,30 +634,30 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         scores: { [uid]: myScore },
       })
       for (const m of members) {
-        notify(m, 'challenge_invite', ref.id, { text: `${title} · ${days} days` }).catch(() => {})
+        notifyQuietly(m, 'challenge_invite', ref.id, { text: `${title} · ${days} days` })
       }
     },
-    [uid, notify]
+    [needUid, notifyQuietly]
   )
 
   const joinChallenge = useCallback(
     async (c: Challenge, myScore: number) => {
-      if (!uid) return
+      const uid = needUid()
       await updateDoc(doc(db, 'challenges', c.id), {
         accepted: arrayUnion(uid),
         [`scores.${uid}`]: myScore,
       })
-      if (c.creator !== uid) notify(c.creator, 'challenge_join', c.id, { text: c.title }).catch(() => {})
+      if (c.creator !== uid) notifyQuietly(c.creator, 'challenge_join', c.id, { text: c.title })
     },
-    [uid, notify]
+    [needUid, notifyQuietly]
   )
 
   const declineChallenge = useCallback(
     async (c: Challenge) => {
-      if (!uid) return
+      const uid = needUid()
       await updateDoc(doc(db, 'challenges', c.id), { declined: arrayUnion(uid) })
     },
-    [uid]
+    [needUid]
   )
 
   const deleteChallenge = useCallback(async (c: Challenge) => {
@@ -562,40 +666,45 @@ export function SocialProvider({ children }: { children: ReactNode }) {
 
   const postScore = useCallback(
     async (c: Challenge, score: number) => {
-      if (!uid) return
+      const uid = needUid()
       await updateDoc(doc(db, 'challenges', c.id), { [`scores.${uid}`]: score })
     },
-    [uid]
+    [needUid]
   )
 
   const markRead = useCallback(
     async (ids?: string[]) => {
-      if (!uid) return
+      const uid = needUid()
       const targets = notifications.filter((n) => !n.read && (!ids || ids.includes(n.id)))
       if (targets.length === 0) return
       const batch = writeBatch(db)
       for (const n of targets) batch.update(doc(db, 'users', uid, 'notifications', n.id), { read: true })
       await batch.commit()
     },
-    [uid, notifications]
+    [needUid, notifications]
   )
 
   const clearNotification = useCallback(
     async (id: string) => {
-      if (!uid) return
+      const uid = needUid()
       await deleteDoc(doc(db, 'users', uid, 'notifications', id))
     },
-    [uid]
+    [needUid]
   )
 
   const notifyFriends = useCallback<SocialValue['notifyFriends']>(
     (type, suffix, extra) => {
-      for (const f of friendIdsRef.current) notify(f, type, suffix, extra).catch(() => {})
+      for (const f of friendIdsRef.current) notifyQuietly(f, type, suffix, extra)
     },
-    [notify]
+    [notifyQuietly]
   )
 
   const isFriend = useCallback((other: string) => friendIds.some((f) => f.uid === other), [friendIds])
+
+  const profileOf = useCallback(
+    (other: string): PublicProfile | undefined => (other === uid ? (me ?? undefined) : profiles[other]),
+    [uid, me, profiles]
+  )
 
   const value = useMemo<SocialValue>(
     () => ({
@@ -609,9 +718,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       challenges,
       push,
       isFriend,
+      profileOf,
+      watchProfile,
       lookupUsername,
       searchUsers,
       changeUsername,
+      confirmUsername,
       sendRequest,
       acceptRequest,
       declineRequest,
@@ -638,9 +750,12 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       challenges,
       push,
       isFriend,
+      profileOf,
+      watchProfile,
       lookupUsername,
       searchUsers,
       changeUsername,
+      confirmUsername,
       sendRequest,
       acceptRequest,
       declineRequest,
@@ -665,4 +780,23 @@ export function useSocial(): SocialValue {
   const ctx = useContext(SocialContext)
   if (!ctx) throw new Error('useSocial must be used inside <SocialProvider>')
   return ctx
+}
+
+/** Stream one person's current public profile (deduped); undefined until it loads. */
+export function useProfile(target: string | undefined): PublicProfile | undefined {
+  const { profileOf, watchProfile } = useSocial()
+  useEffect(() => (target ? watchProfile(target) : undefined), [target, watchProfile])
+  return target ? profileOf(target) : undefined
+}
+
+/** Stream several profiles at once; returns the lookup function. */
+export function useProfiles(targets: string[]): (uid: string) => PublicProfile | undefined {
+  const { profileOf, watchProfile } = useSocial()
+  const key = [...new Set(targets)].sort().join(',')
+  useEffect(() => {
+    if (!key) return
+    const releases = key.split(',').map((t) => watchProfile(t))
+    return () => releases.forEach((r) => r())
+  }, [key, watchProfile])
+  return profileOf
 }

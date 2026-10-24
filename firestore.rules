@@ -95,7 +95,7 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid;
       allow update: if signedIn() && me() == uid && profileShape()
         && request.resource.data.joinedAt == resource.data.joinedAt
-        && (sameUsername() || validRename(uid));
+        && (sameUsername() || confirmUsername() || validRename(uid));
     }
 
     function profileShape() {
@@ -110,6 +110,15 @@ service cloud.firestore {
       return d.username == resource.data.username
         && d.usernameChangedAt == resource.data.usernameChangedAt
         && d.freeChange == resource.data.freeChange;
+    }
+    // Keep the auto-assigned name: spends the free change without renaming, which
+    // starts the 30-day cooldown. Can only happen once (freeChange must be true).
+    function confirmUsername() {
+      let d = request.resource.data;
+      return d.username == resource.data.username
+        && resource.data.freeChange == true
+        && d.freeChange == false
+        && d.usernameChangedAt == request.time;
     }
     // One free change after joining, then one every 30 days. The old handle must
     // be released in the same batch so nobody can hoard names.

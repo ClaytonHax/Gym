@@ -4,7 +4,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { Button, EmptyState, IconButton, PageTitle } from '../components/ui'
 import { Avatar } from '../components/social'
 import { PushToggleCard } from '../components/PushSettings'
-import { useSocial } from '../contexts/SocialContext'
+import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { dayKey } from '../lib/date'
 import { describeNotification, timeAgo, type AppNotification, type NotificationType } from '../lib/social'
 
@@ -18,8 +18,17 @@ const TYPE_ICON: Record<NotificationType, { icon: IconName; tone: string }> = {
   challenge_join: { icon: 'swords', tone: 'bg-go-500 text-ink-950' },
 }
 
-function Row({ n, onOpen }: { n: AppNotification; onOpen: (n: AppNotification) => void }) {
-  const d = describeNotification(n)
+function Row({
+  n,
+  username,
+  onOpen,
+}: {
+  n: AppNotification
+  /** The sender's current handle; the stored one may predate a rename. */
+  username: string | undefined
+  onOpen: (n: AppNotification) => void
+}) {
+  const d = describeNotification(n, username)
   const t = TYPE_ICON[n.type] ?? TYPE_ICON.nudge
   return (
     <button
@@ -30,7 +39,7 @@ function Row({ n, onOpen }: { n: AppNotification; onOpen: (n: AppNotification) =
       }`}
     >
       <span className="relative shrink-0">
-        <Avatar uid={n.from} name={n.fromUsername} size={44} />
+        <Avatar uid={n.from} name={username || n.fromUsername} size={44} />
         <span className={`absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full ring-2 ring-[var(--color-surface)] ${t.tone}`}>
           <Icon name={t.icon} size={13} />
         </span>
@@ -53,6 +62,7 @@ export function Notifications() {
   const navigate = useNavigate()
   const { notifications, unread, markRead } = useSocial()
   const opened = useRef(false)
+  const profileOf = useProfiles(useMemo(() => notifications.map((n) => n.from), [notifications]))
 
   // Opening the inbox clears the badge after a moment, like most apps.
   useEffect(() => {
@@ -75,7 +85,7 @@ export function Notifications() {
 
   function open(n: AppNotification) {
     if (!n.read) markRead([n.id]).catch(() => {})
-    navigate(describeNotification(n).to)
+    navigate(describeNotification(n, profileOf(n.from)?.username).to)
   }
 
   return (
@@ -109,7 +119,7 @@ export function Notifications() {
             <ul className="card flex flex-col p-1.5">
               {g.items.map((n) => (
                 <li key={n.id}>
-                  <Row n={n} onOpen={open} />
+                  <Row n={n} username={profileOf(n.from)?.username} onOpen={open} />
                 </li>
               ))}
             </ul>

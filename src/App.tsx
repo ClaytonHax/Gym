@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { Spinner } from './components/ui'
 import { Icon } from './components/Icon'
@@ -56,6 +56,12 @@ function SetupNotice() {
   )
 }
 
+/** /add/:uid — invite links are keyed by uid so they survive a rename. */
+function AddByUid() {
+  const { uid = '' } = useParams()
+  return <Navigate to={`/friends/${uid}`} replace />
+}
+
 function Gate() {
   const { user, loading } = useAuth()
 
@@ -86,6 +92,7 @@ function Gate() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/friends" element={<Friends />} />
         <Route path="/friends/:uid" element={<FriendProfile />} />
+        <Route path="/add/:uid" element={<AddByUid />} />
         <Route path="/u/:username" element={<UserLookup />} />
         <Route path="/notifications" element={<Notifications />} />
       </Route>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { Button, Field, IconButton, Segmented, Sheet, Spinner } from './ui'
 import { useAuth } from '../contexts/AuthContext'
-import { useSocial } from '../contexts/SocialContext'
+import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useUnit } from '../contexts/SettingsContext'
 import { fmtDuration } from '../lib/date'
@@ -210,7 +210,7 @@ export function ActivityCard({
   onNameClick?: boolean
 }) {
   const { user } = useAuth()
-  const { react, friends } = useSocial()
+  const { react } = useSocial()
   const toast = useToast()
   const unit = useUnit()
   const mine = item.uid === user?.uid
@@ -224,12 +224,9 @@ export function ActivityCard({
     return c
   }, [item.reactions])
 
-  const reactors = useMemo(() => {
-    if (!mine) return []
-    return Object.keys(item.reactions).map(
-      (id) => friends.find((f) => f.uid === id)?.profile?.username ?? 'friend'
-    )
-  }, [mine, item.reactions, friends])
+  const reactorIds = useMemo(() => (mine ? Object.keys(item.reactions) : []), [mine, item.reactions])
+  const profileOf = useProfiles(reactorIds)
+  const reactors = reactorIds.map((id) => profileOf(id)?.username ?? 'friend')
 
   async function toggle(r: Reaction) {
     if (mine || pending) return
@@ -339,13 +336,14 @@ export function ActivityCard({
 /* Add friends                                                                 */
 /* -------------------------------------------------------------------------- */
 
-export function inviteUrl(username: string): string {
-  return `${window.location.origin}/u/${username}`
+/** Keyed by uid, so the link keeps working after a rename. */
+export function inviteUrl(uid: string): string {
+  return `${window.location.origin}/add/${uid}`
 }
 
-export async function shareInvite(username: string, toast: ReturnType<typeof useToast>) {
-  const url = inviteUrl(username)
-  const text = `Add me on Gym Tracker — I'm @${username}. Let's compete.`
+export async function shareInvite(who: Pick<PublicProfile, 'uid' | 'username'>, toast: ReturnType<typeof useToast>) {
+  const url = inviteUrl(who.uid)
+  const text = `Add me on Gym Tracker — I'm @${who.username}. Let's compete.`
   try {
     if (navigator.share) {
       await navigator.share({ title: 'Gym Tracker', text, url })
@@ -473,7 +471,7 @@ export function AddFriendSheet({ open, onClose }: { open: boolean; onClose: () =
         <div className="mt-5 rounded-2xl border border-dashed border-[var(--color-line)] p-4 text-center">
           <p className="text-sm text-[var(--color-fg-muted)]">Your username</p>
           <p className="font-display text-2xl font-bold">@{me.username}</p>
-          <Button variant="secondary" full icon="share" className="mt-3" onClick={() => shareInvite(me.username, toast)}>
+          <Button variant="secondary" full icon="share" className="mt-3" onClick={() => shareInvite(me, toast)}>
             Share invite link
           </Button>
         </div>
@@ -635,7 +633,8 @@ export function ChallengeCard({
   myScoreFor: (c: Challenge) => number
 }) {
   const { user } = useAuth()
-  const { me, friends, joinChallenge, declineChallenge, deleteChallenge } = useSocial()
+  const { me, joinChallenge, declineChallenge, deleteChallenge } = useSocial()
+  const profileOf = useProfiles(c.members)
   const toast = useToast()
   const unit = useUnit()
   const [busy, setBusy] = useState(false)
@@ -644,7 +643,7 @@ export function ChallengeCard({
   const invited = !c.accepted.includes(uid) && !c.declined.includes(uid)
 
   const nameOf = (id: string) =>
-    id === uid ? 'You' : (friends.find((f) => f.uid === id)?.profile?.username ?? 'player')
+    id === uid ? 'You' : (profileOf(id)?.username ?? 'player')
 
   const players = c.members
     .filter((m) => !c.declined.includes(m))
@@ -652,7 +651,7 @@ export function ChallengeCard({
       uid: m,
       joined: c.accepted.includes(m),
       score: c.scores[m] ?? 0,
-      name: m === uid ? (me?.displayName || 'You') : (friends.find((f) => f.uid === m)?.profile?.displayName ?? ''),
+      name: m === uid ? (me?.displayName || 'You') : (profileOf(m)?.displayName ?? ''),
     }))
     .sort((a, b) => Number(b.joined) - Number(a.joined) || b.score - a.score)
   const top = Math.max(1, ...players.map((p) => p.score))

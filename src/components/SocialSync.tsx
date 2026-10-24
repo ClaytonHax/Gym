@@ -75,7 +75,7 @@ export function SocialSync() {
         }
         activityIds.current = map
       },
-      () => {}
+      (err) => console.warn('activity listener failed', err)
     )
   }, [uid])
 
@@ -96,7 +96,11 @@ export function SocialSync() {
         const ref = doc(db, 'users', uid, 'activity', w.id)
         existing.set(w.id, fingerprint)
         if (prev === undefined) {
-          setDoc(ref, { ...item, reactions: {} }).catch(() => existing.delete(w.id))
+          // merge: never wipe reactions friends added before our snapshot caught up.
+          setDoc(ref, { ...item, reactions: {} }, { merge: true }).catch((err) => {
+            console.warn('activity sync failed', err)
+            existing.delete(w.id)
+          })
           const finished = new Date(w.finishedAt ?? w.startedAt).getTime()
           if (Date.now() - finished < FRESH_MS) {
             const pr = item.prs > 0 ? ` · ${item.prs} PR${item.prs === 1 ? '' : 's'}` : ''
@@ -107,13 +111,13 @@ export function SocialSync() {
           }
         } else {
           // Keep friends' reactions: update the workout fields only.
-          updateDoc(ref, item).catch(() => {})
+          updateDoc(ref, item).catch((err) => console.warn('activity update failed', err))
         }
       }
       for (const id of existing.keys()) {
         if (!keep.has(id)) {
           existing.delete(id)
-          deleteDoc(doc(db, 'users', uid, 'activity', id)).catch(() => {})
+          deleteDoc(doc(db, 'users', uid, 'activity', id)).catch((err) => console.warn('activity prune failed', err))
         }
       }
     }, 2000)
@@ -128,7 +132,7 @@ export function SocialSync() {
       if (!c.accepted.includes(uid) || c.endDay < graceEnd) continue
       const score = challengeScore(workouts, c.metric, c.startDay, c.endDay)
       if (c.scores[uid] === score) continue
-      updateDoc(doc(db, 'challenges', c.id), { [`scores.${uid}`]: score }).catch(() => {})
+      updateDoc(doc(db, 'challenges', c.id), { [`scores.${uid}`]: score }).catch((err) => console.warn('score sync failed', err))
     }
   }, [uid, ready, challenges, workouts])
 

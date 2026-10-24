@@ -24,9 +24,10 @@ import {
   shareInvite,
 } from '../components/social'
 import { useMyPublicStats } from '../components/SocialSync'
+import { openProfileSetup } from '../components/ProfileSetup'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
-import { useSocial } from '../contexts/SocialContext'
+import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useFeed } from '../hooks/useFeed'
 import { dayKey, addDays } from '../lib/date'
@@ -230,6 +231,8 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
   const { friends, incoming, outgoing, acceptRequest, declineRequest } = useSocial()
   const toast = useToast()
   const [busy, setBusy] = useState<string | null>(null)
+  // Requests carry the usernames from when they were sent; show the current ones.
+  const profileOf = useProfiles([...incoming.map((r) => r.from), ...outgoing.map((r) => r.to)])
 
   async function run(id: string, fn: () => Promise<void>, ok?: string) {
     setBusy(id)
@@ -249,17 +252,21 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
         <section>
           <SectionHeader title={`Requests (${incoming.length})`} />
           <ul className="flex flex-col gap-2">
-            {incoming.map((r) => (
+            {incoming.map((r) => {
+              const p = profileOf(r.from)
+              const handle = p?.username || r.fromUsername
+              const label = p?.displayName || p?.username || r.fromName || r.fromUsername
+              return (
               <li key={r.id} className="card-accent flex flex-wrap items-center gap-3 p-3">
-                <Avatar uid={r.from} name={r.fromName || r.fromUsername} size={44} />
+                <Avatar uid={r.from} name={label} size={44} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">{r.fromName || r.fromUsername}</span>
-                  <span className="block truncate text-sm text-[var(--color-fg-muted)]">@{r.fromUsername}</span>
+                  <span className="block truncate font-semibold">{label}</span>
+                  <span className="block truncate text-sm text-[var(--color-fg-muted)]">@{handle}</span>
                 </span>
                 <span className="flex gap-2">
                   <IconButton
                     icon="x"
-                    label={`Decline @${r.fromUsername}`}
+                    label={`Decline @${handle}`}
                     variant="secondary"
                     disabled={busy === r.id}
                     onClick={() => run(r.id, () => declineRequest(r))}
@@ -269,13 +276,14 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
                     variant="go"
                     icon="check"
                     loading={busy === r.id}
-                    onClick={() => run(r.id, () => acceptRequest(r), `You and @${r.fromUsername} are now friends.`)}
+                    onClick={() => run(r.id, () => acceptRequest(r), `You and @${handle} are now friends.`)}
                   >
                     Accept
                   </Button>
                 </span>
               </li>
-            ))}
+              )
+            })}
           </ul>
         </section>
       ) : null}
@@ -337,18 +345,21 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
         <section>
           <SectionHeader title="Sent requests" />
           <ul className="card flex flex-col p-2">
-            {outgoing.map((r) => (
+            {outgoing.map((r) => {
+              const p = profileOf(r.to)
+              return (
               <li key={r.id} className="flex min-h-14 items-center gap-3 px-2 py-1.5">
-                <Avatar uid={r.to} name={r.toName || r.toUsername} size={36} />
+                <Avatar uid={r.to} name={p?.displayName || p?.username || r.toName || r.toUsername} size={36} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">@{r.toUsername}</span>
+                  <span className="block truncate font-semibold">@{p?.username || r.toUsername}</span>
                   <span className="block text-xs text-[var(--color-fg-muted)]">Waiting for them to accept</span>
                 </span>
                 <Button size="sm" variant="ghost" loading={busy === r.id} onClick={() => run(r.id, () => declineRequest(r))}>
                   Cancel
                 </Button>
               </li>
-            ))}
+              )
+            })}
           </ul>
         </section>
       ) : null}
@@ -446,10 +457,7 @@ export function Friends() {
     [uid, me, myStats, friends]
   )
 
-  const profileOf = useCallback(
-    (id: string) => (id === uid ? (me ?? undefined) : friends.find((f) => f.uid === id)?.profile),
-    [uid, me, friends]
-  )
+  const { profileOf } = useSocial()
 
   const myScoreFor = useCallback(
     (c: Challenge) => challengeScore(workouts, c.metric, c.startDay, c.endDay),
@@ -476,7 +484,7 @@ export function Friends() {
           {me ? (
             <button
               type="button"
-              onClick={() => shareInvite(me.username, toast)}
+              onClick={() => shareInvite(me, toast)}
               className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-1 text-sm font-semibold text-[var(--color-fg-muted)] hover:text-brand-400"
             >
               @{me.username}
@@ -501,9 +509,10 @@ export function Friends() {
       </header>
 
       {me?.freeChange ? (
-        <Link
-          to="/settings#username"
-          className="card flex items-center gap-3 p-3.5 transition-colors duration-200 hover:border-brand-500/60"
+        <button
+          type="button"
+          onClick={openProfileSetup}
+          className="card flex min-h-14 w-full items-center gap-3 p-3.5 text-left transition-colors duration-200 hover:border-brand-500/60"
         >
           <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
             <Icon name="at" size={20} />
@@ -511,11 +520,11 @@ export function Friends() {
           <span className="min-w-0 flex-1">
             <span className="block font-semibold">You’re @{me.username}</span>
             <span className="block text-xs text-[var(--color-fg-muted)]">
-              Make it yours — one free change now, then once a month.
+              Choose your username — change it freely until you save, then once a month.
             </span>
           </span>
           <Icon name="chevron-right" size={18} className="text-[var(--color-fg-muted)]" />
-        </Link>
+        </button>
       ) : null}
 
       <div role="tablist" aria-label="Friends sections" className="grid grid-cols-4 gap-1 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-1">
@@ -558,7 +567,7 @@ export function Friends() {
                 Find friends
               </Button>
               {me ? (
-                <Button full variant="secondary" icon="share" onClick={() => shareInvite(me.username, toast)}>
+                <Button full variant="secondary" icon="share" onClick={() => shareInvite(me, toast)}>
                   Share invite link
                 </Button>
               ) : null}

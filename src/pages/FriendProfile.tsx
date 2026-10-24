@@ -27,7 +27,7 @@ import {
 import { useMyPublicStats } from '../components/SocialSync'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
-import { useSocial } from '../contexts/SocialContext'
+import { useProfile, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useFeed } from '../hooks/useFeed'
 import { addDays, dayKey } from '../lib/date'
@@ -155,6 +155,7 @@ export function FriendProfile() {
   const toast = useToast()
   const { stats: myStats, workouts } = useMyPublicStats()
   const friend = friends.find((f) => f.uid === friendUid)
+  const liveProfile = useProfile(friendUid)
   const [stranger, setStranger] = useState<PublicProfile | null | undefined>(undefined)
   const [nudging, setNudging] = useState<PublicProfile | null>(null)
   const [challenging, setChallenging] = useState(false)
@@ -192,7 +193,7 @@ export function FriendProfile() {
     }
   }, [friendNow, friendUid])
 
-  const profile = friend?.profile ?? stranger ?? undefined
+  const profile = friend?.profile ?? liveProfile ?? stranger ?? undefined
   const stats = friend?.stats
   const heat = useMemo(() => pseudoWorkouts(stats), [stats])
   const { name, handle } = displayOf(profile)

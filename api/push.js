@@ -36,10 +36,14 @@ function decodeFields(fields) {
 }
 
 async function readAs(token, docPath) {
-  const res = await fetch(`${BASE}/${docPath}`, { headers: { Authorization: `Bearer ${token}` } })
-  if (!res.ok) return null
-  const json = await res.json()
-  return decodeFields(json.fields ?? {})
+  try {
+    const res = await fetch(`${BASE}/${docPath}`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return null
+    const doc = await res.json()
+    return decodeFields(doc.fields ?? {})
+  } catch {
+    return null
+  }
 }
 
 function message(n) {
@@ -72,6 +76,15 @@ function json(status, body) {
 }
 
 export async function POST(request) {
+  try {
+    return await handle(request)
+  } catch (err) {
+    console.error('push failed', err)
+    return json(500, { error: 'internal error' })
+  }
+}
+
+async function handle(request) {
   const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY } = process.env
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return json(503, { error: 'push not configured' })
 
@@ -90,11 +103,17 @@ export async function POST(request) {
   }
 
   const n = await readAs(token, `users/${to}/notifications/${id}`)
-  if (!n) return json(403, { error: 'not allowed' })
+  if (!n || typeof n.from !== 'string' || !ID.test(n.from)) return json(403, { error: 'not allowed' })
   // Only fresh notifications can be pushed, so a replayed call can't spam.
-  if (!n.createdAt || Date.now() - Date.parse(n.createdAt) > MAX_AGE_MS) {
+  const created = Date.parse(n.createdAt)
+  if (!n.createdAt || Number.isNaN(created) || Date.now() - created > MAX_AGE_MS) {
     return json(410, { error: 'too old' })
   }
+
+  // Identity is uid-based: show the sender's *current* username, not the one
+  // copied into the notification (which may be stale after a rename).
+  const sender = await readAs(token, `profiles/${n.from}`)
+  n.fromUsername = sender?.username || n.fromUsername || 'A friend'
 
   const push = await readAs(token, `users/${to}/public/push`)
   const subs = Array.isArray(push?.subs) ? push.subs : []

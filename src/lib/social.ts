@@ -418,8 +418,12 @@ export function utcDayNumber(): number {
   return Math.floor(Date.now() / 86400000)
 }
 
-export function describeNotification(n: AppNotification): { title: string; body?: string; to: string } {
-  const who = `@${n.fromUsername}`
+/** `currentUsername` is the sender's live handle; the stored one may be stale after a rename. */
+export function describeNotification(
+  n: AppNotification,
+  currentUsername?: string
+): { title: string; body?: string; to: string } {
+  const who = `@${currentUsername || n.fromUsername}`
   switch (n.type) {
     case 'friend_request':
       return { title: `${who} sent you a friend request`, to: '/friends?tab=friends' }

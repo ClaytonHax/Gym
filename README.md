@@ -89,6 +89,11 @@ challenges/{id}                 battles; each member writes only their own score
 
 Everything is enforced in [`firestore.rules`](./firestore.rules) — there's no admin backend.
 
+Identity is **uid-based**: friendships, requests, notifications and challenges all reference uids.
+Usernames are display-only (they can change, once free then every 30 days), so a rename never
+breaks a friendship. The rules are covered by an emulator test suite: `npm run test:rules`
+(needs Java and the Firebase CLI; it starts the Firestore emulator itself).
+
 ### Push notifications (free)
 
 Pushes go out from a Vercel serverless function, [`api/push.js`](./api/push.js), using
@@ -103,6 +108,9 @@ rules decide who may push to whom. Set these in Vercel → Environment Variables
 
 Generate a new pair with `npx web-push generate-vapid-keys` (then update both places).
 
+The push text uses the sender's *current* username, looked up by uid from `profiles/{uid}`
+(falling back to the name stored on the notification).
+
 All weights are stored in **kilograms**; conversion happens only at the display edge.
 
 ## Scripts
@@ -113,6 +121,7 @@ All weights are stored in **kilograms**; conversion happens only at the display 
 | `npm run build` | Type-check and build to `dist/` |
 | `npm run preview` | Serve the production build (needed to test the service worker) |
 | `npm run lint` | Type-check only |
+| `npm run test:rules` | Firestore security-rules tests against the local emulator |
 
 ## Deployment
 

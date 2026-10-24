@@ -1,50 +1,20 @@
-import { useEffect, useState } from 'react'
-import { doc, getDoc } from 'firebase/firestore'
-import { db } from '../lib/firebase'
+import { useState } from 'react'
 import { Icon } from './Icon'
 import { Button, Card, Field, Sheet, Skeleton } from './ui'
 import { shareInvite } from './social'
-import { useAuth } from '../contexts/AuthContext'
 import { useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
-import { nextRenameAt, normalizeUsername, RENAME_COOLDOWN_DAYS, usernameError } from '../lib/social'
-
-type Availability = 'idle' | 'checking' | 'free' | 'taken' | 'invalid'
+import { useUsernameAvailability } from '../hooks/useUsernameAvailability'
+import { nextRenameAt, RENAME_COOLDOWN_DAYS } from '../lib/social'
 
 export function UsernameCard() {
-  const { user } = useAuth()
   const { me, changeUsername } = useSocial()
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState('')
-  const [status, setStatus] = useState<Availability>('idle')
   const [saving, setSaving] = useState(false)
 
-  const next = normalizeUsername(value)
-  const error = value ? usernameError(next) : null
-
-  useEffect(() => {
-    if (!open || !me) return
-    if (!value || next === me.username) {
-      setStatus('idle')
-      return
-    }
-    if (error) {
-      setStatus('invalid')
-      return
-    }
-    setStatus('checking')
-    let cancelled = false
-    const t = window.setTimeout(() => {
-      getDoc(doc(db, 'usernames', next))
-        .then((snap) => !cancelled && setStatus(snap.exists() && snap.data()?.uid !== user?.uid ? 'taken' : 'free'))
-        .catch(() => !cancelled && setStatus('idle'))
-    }, 300)
-    return () => {
-      cancelled = true
-      window.clearTimeout(t)
-    }
-  }, [open, value, next, error, me, user?.uid])
+  const { next, error, status, setStatus } = useUsernameAvailability(value, me?.username, open)
 
   if (!me) {
     return (
@@ -82,7 +52,7 @@ export function UsernameCard() {
           <p className="truncate font-display text-2xl font-bold leading-none">@{me.username}</p>
           <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
             {me.freeChange
-              ? 'You get one free change now, then one every 30 days.'
+              ? 'Change it freely until you save, then once a month.'
               : lockedUntil
                 ? `Next change available ${lockedUntil.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}.`
                 : 'You can change your username now.'}
@@ -101,7 +71,7 @@ export function UsernameCard() {
         >
           Change
         </Button>
-        <Button variant="secondary" icon="share" onClick={() => shareInvite(me.username, toast)}>
+        <Button variant="secondary" icon="share" onClick={() => shareInvite(me, toast)}>
           Invite
         </Button>
       </div>
@@ -139,7 +109,7 @@ export function UsernameCard() {
         <p className="mt-4 flex items-start gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-400">
           <Icon name="clock" size={16} className="mt-0.5 shrink-0" />
           {me.freeChange
-            ? `This is your free change. After it, you can change again once every ${RENAME_COOLDOWN_DAYS} days.`
+            ? `Change it as often as you like until you save. After that, once every ${RENAME_COOLDOWN_DAYS} days.`
             : `After saving you can’t change it again for ${RENAME_COOLDOWN_DAYS} days.`}
         </p>
       </Sheet>
