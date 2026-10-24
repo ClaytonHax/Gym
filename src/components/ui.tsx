@@ -390,6 +390,11 @@ export function Sheet({
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
+  // Callers usually pass an inline arrow. Reading it through a ref keeps the
+  // effect below from re-running on every keystroke, which used to steal focus
+  // and dismiss the iOS keyboard mid-typing.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     if (!open) return
@@ -400,7 +405,7 @@ export function Sheet({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (e.key !== 'Tab' || !panelRef.current) return
@@ -431,7 +436,7 @@ export function Sheet({
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 
