@@ -9,6 +9,8 @@ import type { ActiveWorkout } from '../types'
 const LOCAL_KEY = 'gym.activeWorkout'
 /** startedAt of the session last known to exist in Firestore — lets a reload tell "deleted elsewhere" from "never synced". */
 const MIRRORED_KEY = 'gym.activeWorkout.mirrored'
+/** startedAt of the session this device last finished/discarded — survives reloads so a lagging cloud copy can't come back. */
+const TOMBSTONE_KEY = 'gym.activeWorkout.tombstone'
 /** Typing fires a change per keystroke; one write per pause keeps the Firestore stream calm. */
 const WRITE_DELAY_MS = 600
 
@@ -38,6 +40,22 @@ function writeMirrored(startedAt: string | null) {
   }
 }
 
+function readTombstone(): string | null {
+  try {
+    return localStorage.getItem(TOMBSTONE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeTombstone(startedAt: string) {
+  try {
+    localStorage.setItem(TOMBSTONE_KEY, startedAt)
+  } catch {
+    // Private mode — the in-memory tombstone still covers this page load.
+  }
+}
+
 type SaveInput = ActiveWorkout | null | ((prev: ActiveWorkout | null) => ActiveWorkout | null)
 
 interface ActiveWorkoutValue {
@@ -48,6 +66,9 @@ interface ActiveWorkoutValue {
   /** True while the cloud mirror is failing; the session itself is still safe on this device. */
   syncError: boolean
 }
+
+const fromCacheOrPending = (snap: { metadata: { fromCache: boolean; hasPendingWrites: boolean } }) =>
+  snap.metadata.fromCache || snap.metadata.hasPendingWrites
 
 const Ctx = createContext<ActiveWorkoutValue | null>(null)
 
@@ -69,7 +90,7 @@ export function ActiveWorkoutProvider({ children }: { children: ReactNode }) {
 
   const activeRef = useRef(active)
   const mirroredRef = useRef<string | null>(readMirrored())
-  const tombstoneRef = useRef<string | null>(null)
+  const tombstoneRef = useRef<string | null>(readTombstone())
   const pendingRef = useRef<{ uid: string; value: ActiveWorkout | null } | null>(null)
   const timerRef = useRef<number | null>(null)
   const flushingRef = useRef(false)
@@ -145,6 +166,12 @@ export function ActiveWorkoutProvider({ children }: { children: ReactNode }) {
           remotePending: snap.metadata.hasPendingWrites || pendingRef.current !== null || timerRef.current !== null,
           fromCache: snap.metadata.fromCache,
         })
+        // The cloud still holds a session we finished or discarded here (its delete failed
+        // or never went out, e.g. the page reloaded): send our state again instead of resuming it.
+        if (remote && remote.startedAt === tombstoneRef.current && !pendingRef.current && !fromCacheOrPending(snap)) {
+          pendingRef.current = { uid, value: activeRef.current }
+          flushNow()
+        }
         if (remote && next === remote) {
           mirroredRef.current = remote.startedAt
           writeMirrored(remote.startedAt)
@@ -167,7 +194,7 @@ export function ActiveWorkoutProvider({ children }: { children: ReactNode }) {
       },
       () => setHydrated(true)
     )
-  }, [uid])
+  }, [uid, flushNow])
 
   const save = useCallback(
     (input: SaveInput) => {
@@ -183,7 +210,10 @@ export function ActiveWorkoutProvider({ children }: { children: ReactNode }) {
         // Quota or private mode: keep going in memory.
       }
 
-      if (!next && prev) tombstoneRef.current = prev.startedAt
+      if (!next && prev) {
+        tombstoneRef.current = prev.startedAt
+        writeTombstone(prev.startedAt)
+      }
       if (!uid) return
 
       // Fire-and-forget: the UI must never wait on the network mid-set.

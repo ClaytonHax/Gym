@@ -171,7 +171,7 @@ export function RestTimer({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Rest timer</p>
           <p className="text-sm text-[var(--color-fg-muted)]">
-            Starts by itself after each strength set. Next rest: <span className="tabular font-semibold text-[var(--color-fg)]">{fmtClock(duration)}</span>
+            Starts by itself after each strength set. Default rest: <span className="tabular font-semibold text-[var(--color-fg)]">{fmtClock(duration)}</span>, unless the exercise shows its own.
           </p>
         </div>
       </div>

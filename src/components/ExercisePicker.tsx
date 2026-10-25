@@ -21,10 +21,13 @@ export function ExercisePicker({
   open,
   onClose,
   onPick,
+  swapFor,
 }: {
   open: boolean
   onClose: () => void
   onPick: (exercises: Exercise[]) => void
+  /** Name of the exercise being replaced: the sheet reads as a swap, not an add. */
+  swapFor?: string
 }) {
   const { exercises, addExercise } = useExercises()
   const toast = useToast()
@@ -137,7 +140,7 @@ export function ExercisePicker({
     <Sheet
       open={open}
       onClose={close}
-      title={creating ? 'Create your own exercise' : 'Add exercises'}
+      title={creating ? 'Create your own exercise' : swapFor ? `Swap ${swapFor} for…` : 'Add exercises'}
       size={creating ? 'auto' : 'full'}
       pinned={
         creating ? undefined : (
@@ -220,7 +223,9 @@ export function ExercisePicker({
             <Button full size="lg" onClick={confirm} disabled={selected.length === 0}>
               {selected.length === 0
                 ? 'Pick at least one exercise'
-                : `Add ${selected.length} exercise${selected.length > 1 ? 's' : ''}`}
+                : swapFor
+                  ? `Swap to ${selectedExercises[0]?.name ?? "this"}`
+                  : `Add ${selected.length} exercise${selected.length > 1 ? 's' : ''}`}
             </Button>
           </div>
         )

@@ -171,8 +171,7 @@ export function WorkoutActive() {
   const [platesFor, setPlatesFor] = useState<number | null>(null)
   // Exercise index awaiting a "yes, remove it" because it has logged sets.
   const [removeAsk, setRemoveAsk] = useState<number | null>(null)
-  // Swap: ask first when sets are logged, then open the picker for that index.
-  const [swapAsk, setSwapAsk] = useState<number | null>(null)
+  // Swap: the picker opens for that exercise's index.
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
   const timerRef = useRef<RestTimerHandle | null>(null)
 
@@ -440,8 +439,8 @@ export function WorkoutActive() {
   function askSwap(index: number) {
     const ex = active?.exercises[index]
     if (!ex) return
-    if (ex.sets.some((s) => s.done)) setSwapAsk(index)
-    else setSwapIndex(index)
+    // Nothing is lost on a swap any more (done sets stay put), so no confirm needed.
+    setSwapIndex(index)
   }
 
   /** Replace in place; extra picks (if any) slot in right after it. */
@@ -451,11 +450,18 @@ export function WorkoutActive() {
     setSwapIndex(null)
     if (index === null || !old || picked.length === 0) return
     const [first, ...rest] = picked
-    const replacement = swapExercise(old, first)
+    // Machine taken mid-exercise: the sets already done stay on the old exercise and
+    // the swap picks up with the sets that are left, right after it.
+    const doneSets = old.sets.filter((s) => s.done)
+    const kept = doneSets.length > 0 ? { ...old, sets: doneSets } : null
+    const swapped = swapExercise(old, first)
+    const remaining = swapped.sets.slice(doneSets.length)
+    const replacement = { ...swapped, sets: remaining.length > 0 ? remaining : swapped.sets.slice(0, 1) }
     patch((d) => ({
       ...d,
       exercises: [
         ...d.exercises.slice(0, index),
+        ...(kept ? [kept] : []),
         replacement,
         ...rest.map(toWorkoutExercise),
         ...d.exercises.slice(index + 1),
@@ -467,7 +473,9 @@ export function WorkoutActive() {
         onClick: () =>
           patch((d) => ({
             ...d,
-            exercises: d.exercises.map((e) => (keyOf(e, 'x') === keyOf(replacement, 'y') ? old : e)),
+            exercises: d.exercises
+              .filter((e) => !kept || keyOf(e, 'x') !== keyOf(old, 'y'))
+              .map((e) => (keyOf(e, 'x') === keyOf(replacement, 'y') ? old : e)),
           })),
       },
     })
@@ -962,7 +970,12 @@ export function WorkoutActive() {
       </Button>
 
       <ExercisePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={addExercises} />
-      <ExercisePicker open={swapIndex !== null} onClose={() => setSwapIndex(null)} onPick={swapPicked} />
+      <ExercisePicker
+        open={swapIndex !== null}
+        onClose={() => setSwapIndex(null)}
+        onPick={swapPicked}
+        swapFor={swapIndex !== null ? active.exercises[swapIndex]?.name : undefined}
+      />
       <PlateCalculator open={platesFor !== null} onClose={() => setPlatesFor(null)} initialKg={platesFor ?? 0} />
 
       <Sheet
@@ -1113,18 +1126,6 @@ export function WorkoutActive() {
         }}
       />
 
-      <ConfirmSheet
-        open={swapAsk !== null}
-        title="Swap this exercise?"
-        message={`The sets you logged for ${swapAsk !== null ? (active.exercises[swapAsk]?.name ?? 'it') : 'it'} will be cleared. The number of sets and your targets stay. You can Undo right after.`}
-        confirmLabel="Choose a swap"
-        tone="primary"
-        onCancel={() => setSwapAsk(null)}
-        onConfirm={() => {
-          setSwapIndex(swapAsk)
-          setSwapAsk(null)
-        }}
-      />
 
       <ConfirmSheet
         open={discardOpen}
