@@ -177,6 +177,12 @@ html.light {
   .safe-top {
     padding-top: env(safe-area-inset-top);
   }
+  /* Installed app: iOS blurs a band a little below the status bar, so leave room under it. */
+  @media (display-mode: standalone) {
+    .safe-top {
+      padding-top: calc(env(safe-area-inset-top) + 0.75rem);
+    }
+  }
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
   }
