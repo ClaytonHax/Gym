@@ -551,7 +551,8 @@ export function Sheet({
           border border-[var(--color-line)] bg-[var(--color-surface)] shadow-2xl
           sm:max-w-lg sm:rounded-3xl ${
             size === 'full'
-              ? 'h-full max-h-full rounded-t-2xl sm:h-auto sm:max-h-[85%]'
+              ? // Stops short of the status bar so the title and close button stay reachable.
+                'h-[calc(100%-env(safe-area-inset-top)-1rem)] rounded-t-2xl sm:h-auto sm:max-h-[85%]'
               : 'max-h-[92%] rounded-t-3xl sm:max-h-[90%]'
           }`}
       >

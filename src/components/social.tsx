@@ -22,7 +22,7 @@ import {
   lastTrainedLabel,
   METRIC_HELP,
   METRICS,
-  normalizeUsername,
+  searchText,
   nudgePresetsFor,
   rankLabel,
   rankWithTies,
@@ -509,11 +509,11 @@ export function AddFriendSheet({ open, onClose }: { open: boolean; onClose: () =
   // Only the latest request may update the screen.
   const latest = useRef(0)
 
-  const term = normalizeUsername(q)
+  const term = searchText(q)
 
   const run = useCallback(
     (raw: string) => {
-      const t = normalizeUsername(raw)
+      const t = searchText(raw)
       if (t.length < 2) {
         latest.current++
         setState({ status: 'idle' })
@@ -580,16 +580,16 @@ export function AddFriendSheet({ open, onClose }: { open: boolean; onClose: () =
         >
           <div className="min-w-0 flex-1">
             <Field
-              label="Search by username"
+              label="Search by name or username"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="jake or @jake"
+              placeholder="Jake Smith or @jake"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               inputMode="search"
               enterKeyHint="search"
-              error={tooShort ? 'Type at least 2 letters of their username.' : undefined}
+              error={tooShort ? 'Type at least 2 letters of their name or username.' : undefined}
             />
           </div>
           <Button type="submit" icon="search" loading={searching} className="shrink-0">
@@ -631,7 +631,7 @@ export function AddFriendSheet({ open, onClose }: { open: boolean; onClose: () =
 
         {state.status === 'done' && state.results.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-[var(--color-fg-muted)]">
-            No one found with @{state.term}. Check the spelling, or send them your invite link below.
+            No one found for “{state.term}”. Check the spelling, or send them your invite link below.
           </p>
         ) : null}
       </div>

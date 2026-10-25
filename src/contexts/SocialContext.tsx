@@ -32,7 +32,9 @@ import { sendPush } from '../lib/push'
 import {
   challengeState,
   describeNotification,
+  nameKeys,
   normalizeUsername,
+  searchText,
   suggestUsername,
   toIso,
   utcDayNumber,
@@ -117,6 +119,7 @@ function toProfile(uid: string, data: Record<string, unknown> | undefined): Publ
     joinedAt: data.joinedAt ? toIso(data.joinedAt) : undefined,
     usernameChangedAt: data.usernameChangedAt ? toIso(data.usernameChangedAt) : undefined,
     freeChange: Boolean(data.freeChange),
+    nameKeys: Array.isArray(data.nameKeys) ? data.nameKeys.map(String) : undefined,
   }
 }
 
@@ -192,6 +195,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
         batch.set(doc(db, 'profiles', owner), {
           username: name,
           displayName: seedRef.current.slice(0, 40),
+          nameKeys: nameKeys(seedRef.current.slice(0, 40)),
           joinedAt: serverTimestamp(),
           usernameChangedAt: serverTimestamp(),
           freeChange: true,
@@ -237,12 +241,14 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     }
   }, [uid])
 
-  // Keep the public display name in step with Settings.
+  // Keep the public display name (and its search keys) in step with Settings.
+  // Also backfills keys for profiles made before name search existed.
   useEffect(() => {
     if (!uid || !me) return
-    const name = profile.displayName.trim().slice(0, 40)
-    if (!name || name === me.displayName) return
-    updateDoc(doc(db, 'profiles', uid), { displayName: name }).catch(() => {})
+    const name = profile.displayName.trim().slice(0, 40) || me.displayName
+    const keys = nameKeys(name)
+    if (name === me.displayName && keys.join('|') === me.nameKeys?.join('|')) return
+    updateDoc(doc(db, 'profiles', uid), { displayName: name, nameKeys: keys }).catch(() => {})
   }, [uid, me, profile.displayName])
 
   /* -------------------------------- friends ------------------------------ */
@@ -498,18 +504,28 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     return toProfile(owner, snap.data()) ?? null
   }, [])
 
+  // Username prefix or any word of the name, merged; handle matches first.
   const searchUsers = useCallback(async (raw: string) => {
     const prefix = normalizeUsername(raw)
-    if (prefix.length < 2) return []
-    const snap = await getDocs(
-      query(
-        collection(db, 'profiles'),
-        where('username', '>=', prefix),
-        where('username', '<=', `${prefix}`),
-        limit(10)
-      )
-    )
-    return snap.docs.map((d) => toProfile(d.id, d.data())).filter((p): p is PublicProfile => Boolean(p))
+    const words = searchText(raw)
+    if (words.length < 2) return []
+    const profiles = collection(db, 'profiles')
+    const [byHandle, byName] = await Promise.all([
+      /^[a-z0-9_.]+$/.test(prefix)
+        ? getDocs(query(profiles, where('username', '>=', prefix), where('username', '<=', `${prefix}`), limit(10)))
+        : null,
+      getDocs(query(profiles, where('nameKeys', 'array-contains', words), limit(10))),
+    ])
+    const seen = new Set<string>()
+    const out: PublicProfile[] = []
+    for (const d of [...(byHandle?.docs ?? []), ...byName.docs]) {
+      const p = toProfile(d.id, d.data())
+      if (p && !seen.has(p.uid)) {
+        seen.add(p.uid)
+        out.push(p)
+      }
+    }
+    return out.slice(0, 15)
   }, [])
 
   const changeUsername = useCallback(

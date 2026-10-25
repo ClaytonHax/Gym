@@ -335,7 +335,7 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
         {friends.length === 0 ? (
           <Card>
             <p className="text-sm text-[var(--color-fg-muted)]">
-              No friends yet. Search by username or share your invite link.
+              No friends yet. Search by name or username, or share your invite link.
             </p>
           </Card>
         ) : (
