@@ -27,7 +27,7 @@ import { useBodyLog } from '../hooks/useBodyLog'
 import { useRoutines } from '../hooks/useRoutines'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { inBattleRange, postProof } from '../hooks/useChallengeProofs'
-import { MUSCLE_COLORS, isDumbbellExercise } from '../data/exercises'
+import { MUSCLE_COLORS, isDumbbellExercise, usesPlates } from '../data/exercises'
 import { dayKey, fmtClock, fmtDuration } from '../lib/date'
 import type { PhotoSvg } from '../lib/photoSvg'
 import { challengeState } from '../lib/social'
@@ -886,7 +886,7 @@ export function WorkoutActive() {
                       <Icon name="copy" size={14} /> Copy last time
                     </button>
                   ) : null}
-                  {ex.tracksWeight && !timed ? (
+                  {ex.tracksWeight && !timed && usesPlates(ex) ? (
                     <button
                       type="button"
                       onClick={() =>

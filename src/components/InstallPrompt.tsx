@@ -232,9 +232,10 @@ function Banner({
   onDismiss: () => void
   dismissLabel: string
 }) {
+  // Compact: one short line of text, action on its own row so the text gets the full width.
   return (
-    <div>
-      <div className="animate-rise flex items-center gap-3 rounded-2xl border border-brand-500/40 bg-[var(--color-surface)] p-3">
+    <div className="animate-rise rounded-2xl border border-brand-500/40 bg-[var(--color-surface)] p-3">
+      <div className="flex items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
           <Icon name={icon} size={20} />
         </span>
@@ -242,16 +243,11 @@ function Banner({
           <p className="text-sm font-semibold">{title}</p>
           <p className="text-sm text-[var(--color-fg-muted)]">{text}</p>
         </div>
-        {action}
         <IconButton icon="x" label={dismissLabel} onClick={onDismiss} />
       </div>
+      <div className="mt-2 pl-[3.25rem]">{action}</div>
     </div>
   )
-}
-
-/** Still mounted by AppShell; the banners now live on Home only (see HomeInstallBanner). */
-export function InstallPrompt() {
-  return null
 }
 
 /**
@@ -337,7 +333,7 @@ export function HomeInstallBanner() {
         <Banner
           icon="download"
           title="Add Gym to your Home Screen"
-          text={deferred ? 'Opens full screen like any other app, and works without internet.' : 'Opens full screen like any other app. On iPhone you need this to get alerts.'}
+          text={deferred ? 'Opens like a normal app, even offline.' : 'Opens like a normal app and lets you get alerts.'}
           dismissLabel="Dismiss install prompt"
           onDismiss={dismissInstall}
           action={

@@ -187,3 +187,18 @@ export function isDumbbellExercise(
     BUILTIN_EXERCISES.find((b) => b.id === e.exerciseId)?.equipment
   return equipment === 'Dumbbell' || /dumbbell/i.test(e.name)
 }
+
+/**
+ * Plate math only makes sense when plates go on a bar: built-in barbell lifts, or a
+ * custom exercise marked Barbell / named like one. Dumbbells, machines and cables are out.
+ */
+export function usesPlates(
+  e: { exerciseId?: string; name: string },
+  equipmentById?: (id: string) => string | undefined
+): boolean {
+  const equipment =
+    (e.exerciseId && equipmentById?.(e.exerciseId)) ||
+    BUILTIN_EXERCISES.find((b) => b.id === e.exerciseId)?.equipment
+  if (equipment) return equipment === 'Barbell'
+  return /barbell|squat|deadlift|bench press|overhead press/i.test(e.name) && !/dumbbell|machine|cable|smith/i.test(e.name)
+}

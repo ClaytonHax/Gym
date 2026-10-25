@@ -126,7 +126,7 @@ export function AppShell() {
                 end={tab.to === '/'}
                 className={({ isActive }) =>
                   tab.primary
-                    ? `group relative -mt-5 flex flex-col items-center gap-1 pb-2 ${
+                    ? `group relative -mt-2 flex flex-col items-center gap-1 pb-2 ${
                         isActive ? 'text-brand-400' : 'text-[var(--color-fg-muted)]'
                       }`
                     : `flex min-h-14 flex-col items-center justify-center gap-1 py-2
@@ -141,12 +141,12 @@ export function AppShell() {
                   tab.primary ? (
                     <>
                       <span
-                        className="grid size-14 place-items-center rounded-2xl bg-brand-500 text-ink-950
+                        className="grid size-12 place-items-center rounded-2xl bg-brand-500 text-ink-950
                           shadow-lg shadow-brand-500/40 ring-4 ring-[var(--color-surface)]
                           transition-[background-color,transform] duration-200 group-hover:bg-brand-400
                           group-active:scale-95"
                       >
-                        <Icon name={tab.icon} size={26} />
+                        <Icon name={tab.icon} size={24} />
                       </span>
                       <span className="text-xs font-bold uppercase tracking-wider">{tab.label}</span>
                     </>
