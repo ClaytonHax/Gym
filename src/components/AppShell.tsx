@@ -99,7 +99,7 @@ export function AppShell() {
         Skip to content
       </a>
 
-      <div className="safe-top sticky top-0 z-30 bg-[var(--color-canvas)]">
+      <div className="safe-top">
         <OfflineBanner />
       </div>
 
