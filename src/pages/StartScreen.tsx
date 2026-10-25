@@ -7,11 +7,13 @@ import { StarterPlans } from '../components/plans'
 import { Button, IconButton, Sheet, Skeleton } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
 import { useRoutines } from '../hooks/useRoutines'
+import { useWorkouts } from '../hooks/useWorkouts'
 import { usePlans } from '../hooks/usePlans'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { planToExercises } from '../data/programs'
 import { toWorkoutExercise, withCardioFields, attachCardioFields } from '../lib/workoutExercise'
-import { fmtDuration } from '../lib/date'
+import { dayKey, fmtDuration } from '../lib/date'
+import { nextWorkoutLabel, nextWorkoutSlot } from '../lib/planUiLogic'
 import { estimateMinutes, exerciseTargetLabel, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
 import type { ActiveWorkout, PlanExercise, Routine, WorkoutExercise } from '../types'
 
@@ -78,7 +80,8 @@ function PlanCard({
 /** The Train tab when nothing is in progress: pick a program, a routine, or go freestyle. */
 export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void }) {
   const toast = useToast()
-  const { activePlan, activeState, today, loading: plansLoading } = usePlans()
+  const { activePlan, activeState, today, upcoming, loading: plansLoading } = usePlans()
+  const { workouts } = useWorkouts()
   const { routines, deleteRoutine } = useRoutines()
   const [anywayOpen, setAnywayOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -87,6 +90,9 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
 
   const todayDay = today?.day ?? null
   const isWorkoutToday = Boolean(today && todayDay && !today.isRest && todayDay.kind === 'workout')
+  // Already trained today: say so and point at the next one, but still allow a repeat.
+  const todayDone = workouts.some((w) => dayKey(new Date(w.startedAt)) === dayKey())
+  const nextSlot = todayDone ? nextWorkoutSlot(upcoming(9), true) : undefined
   const workoutDays = activePlan
     ? activePlan.days.flatMap((day, index) => (day.kind === 'workout' ? [{ day, index }] : []))
     : []
@@ -139,8 +145,14 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
           <div className="card-accent overflow-hidden">
             <div className="p-4 pb-3">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">
-                Today · Day {today.dayNumber} of {today.cycleLength}{today.cycle > 1 ? ` · Round ${today.cycle}` : ''}
+                {todayDone ? 'Done today' : 'Today'} · Day {today.dayNumber} of {today.cycleLength}
+                {today.cycle > 1 ? ` · Round ${today.cycle}` : ''}
               </p>
+              {todayDone && nextSlot ? (
+                <p className="mt-1 text-sm font-semibold text-go-400">
+                  You've trained today. Next: {nextWorkoutLabel(nextSlot)}.
+                </p>
+              ) : null}
               <h2 className="num-display mt-1 text-4xl">{todayDay.name}</h2>
               {todayDay.focus ? (
                 <p className="text-sm text-[var(--color-fg-muted)]">{todayDay.focus}</p>
@@ -172,12 +184,12 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
                 {fmtDuration(estimateMinutes(todayDay.exercises) * 60)}
               </p>
               <Button
-                variant="go"
+                variant={todayDone ? 'secondary' : 'go'}
                 size="md"
                 icon="play"
                 onClick={() => onStart(withCardioFields(startPlanDay(activePlan, today), todayDay.exercises))}
               >
-                Start
+                {todayDone ? 'Do it again' : 'Start'}
               </Button>
             </div>
           </div>
