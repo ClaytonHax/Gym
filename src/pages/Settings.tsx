@@ -27,6 +27,8 @@ import { workoutsToCsv } from '../lib/csv'
 import { kgTo, toKg } from '../lib/units'
 import type { Profile, Unit } from '../types'
 
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
 export function Settings() {
   const { user, logout } = useAuth()
   const { profile, update } = useSettings()
@@ -224,6 +226,41 @@ export function Settings() {
                 onClick={() => save({ weeklyGoal: Math.min(14, profile.weeklyGoal + 1) })}
               />
             </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+              Always rest days
+            </p>
+            <div className="flex gap-1.5">
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((l, i) => {
+                const on = (profile.restWeekdays ?? []).includes(i)
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    aria-pressed={on}
+                    aria-label={`${WEEKDAYS[i]} is a rest day`}
+                    onClick={() =>
+                      save({
+                        restWeekdays: on
+                          ? (profile.restWeekdays ?? []).filter((d) => d !== i)
+                          : [...(profile.restWeekdays ?? []), i].sort(),
+                      })
+                    }
+                    className={`h-11 flex-1 rounded-xl border text-sm font-semibold ${
+                      on
+                        ? 'border-rest bg-rest/15 text-rest'
+                        : 'border-[var(--color-border)] text-[var(--color-fg-muted)]'
+                    }`}
+                  >
+                    {l}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-2 text-xs text-[var(--color-fg-muted)]">
+              Days you never train, like when your gym is closed. They keep your streak alive.
+            </p>
           </div>
         </Card>
       </section>

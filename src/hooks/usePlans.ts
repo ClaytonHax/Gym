@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { addDoc, collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
-import { dayKey } from '../lib/date'
+import { useSettings } from '../contexts/SettingsContext'
+import { dayKey, parseDayKey } from '../lib/date'
 import { cloneDays, isPlannedRest, scheduleFor, scheduleRange, withAdjustment } from '../lib/plans'
 import type { ActivePlanState, DayKey, Plan, ScheduleSlot } from '../types'
 
@@ -112,13 +113,16 @@ export function usePlans(): UsePlans {
     [activePlan, activeState, todayKey]
   )
 
-  const isRestDay = useMemo(
-    () =>
-      activePlan && activeState
-        ? (date: DayKey) => isPlannedRest(activePlan, activeState, date)
-        : undefined,
-    [activePlan, activeState]
-  )
+  const { profile } = useSettings()
+  const restWeekdays = profile.restWeekdays
+  const isRestDay = useMemo(() => {
+    const fixed = new Set(restWeekdays ?? [])
+    const planned = activePlan && activeState
+    if (!planned && fixed.size === 0) return undefined
+    return (date: DayKey) =>
+      fixed.has((parseDayKey(date).getDay() + 6) % 7) ||
+      (planned ? isPlannedRest(activePlan, activeState, date) : false)
+  }, [activePlan, activeState, restWeekdays])
 
   const requireUser = useCallback(() => {
     if (!user) throw new Error('Not signed in')

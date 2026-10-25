@@ -115,6 +115,8 @@ export interface Profile {
   heightCm?: number
   goalWeightKg?: number
   weeklyGoal: number
+  /** Weekdays that are always rest (gym closed), 0 = Monday .. 6 = Sunday. */
+  restWeekdays?: number[]
   /** Auto rest countdown after strength sets. Missing means on. */
   restTimer?: boolean
   /** Default rest length in seconds. */
