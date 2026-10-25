@@ -4,6 +4,7 @@ import { Icon, type IconName } from '../components/Icon'
 import { Button, EmptyState, PageTitle } from '../components/ui'
 import { Avatar } from '../components/social'
 import { PushToggleCard } from '../components/PushSettings'
+import { UpdateNotice, useUpdateAvailable } from '../components/UpdatePrompt'
 import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { dayKey } from '../lib/date'
 import { describeNotification, timeAgo, type AppNotification, type NotificationType, type PublicProfile } from '../lib/social'
@@ -70,6 +71,7 @@ export function Notifications() {
   const { notifications, markRead } = useSocial()
   // Count straight from the list on screen so the header can never contradict it.
   const unread = notifications.filter((n) => !n.read).length
+  const update = useUpdateAvailable()
   const opened = useRef(false)
   const profileOf = useProfiles(useMemo(() => notifications.map((n) => n.from), [notifications]))
 
@@ -104,7 +106,7 @@ export function Notifications() {
           Back
         </Button>
         <div className="flex-1">
-          <PageTitle title="Notifications" subtitle={notifications.length === 0 ? 'Nothing here yet' : unread > 0 ? `${unread} unread` : 'You’re all caught up'} />
+          <PageTitle title="Notifications" subtitle={notifications.length === 0 && !update ? 'Nothing here yet' : unread > 0 ? `${unread} unread` : update ? 'Update available' : 'You’re all caught up'} />
         </div>
         {unread > 0 ? (
           <Button size="sm" variant="ghost" icon="check" onClick={() => markRead()} className="mt-1">
@@ -112,6 +114,8 @@ export function Notifications() {
           </Button>
         ) : null}
       </div>
+
+      <UpdateNotice />
 
       <PushToggleCard compact />
 

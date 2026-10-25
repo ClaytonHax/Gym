@@ -8,6 +8,7 @@ import { ProfileSetup } from './ProfileSetup'
 import { PublicPlanSeeder } from './plans'
 import { useSocial } from '../contexts/SocialContext'
 import { PlanSyncProvider } from '../contexts/PlanSyncContext'
+import { PullToRefresh } from './PullToRefresh'
 
 const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean }> = [
   { to: '/', label: 'Home', icon: 'home' },
@@ -16,6 +17,13 @@ const TABS: Array<{ to: string; label: string; icon: IconName; primary?: boolean
   { to: '/friends', label: 'Friends', icon: 'users' },
   { to: '/progress', label: 'Progress', icon: 'trending' },
 ]
+
+/** Screens mid-edit, where a stray pull-down reload would throw work away. */
+function pullAllowed(pathname: string): boolean {
+  if (pathname === '/workout' || pathname === '/plans/new' || pathname.endsWith('/edit')) return false
+  // /plans/:id is the editor; /plans/library and /plans/view/:id are read-only.
+  return !/^\/plans\/(?!library$|view\/)[^/]+$/.test(pathname)
+}
 
 function OfflineBanner() {
   const [offline, setOffline] = useState(!navigator.onLine)
@@ -98,6 +106,8 @@ export function AppShell() {
       >
         Skip to content
       </a>
+
+      <PullToRefresh enabled={pullAllowed(pathname)} />
 
       <div className="safe-top">
         <OfflineBanner />

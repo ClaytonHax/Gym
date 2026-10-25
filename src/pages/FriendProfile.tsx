@@ -4,6 +4,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { Icon } from '../components/Icon'
 import { ActivityHeatmap } from '../components/ActivityHeatmap'
+import { OpenInAppHint } from '../components/OpenInAppHint'
 import {
   Button,
   Card,
@@ -238,6 +239,8 @@ export function FriendProfile() {
   return (
     <div className="animate-rise flex flex-col gap-6">
       <div>{back}</div>
+
+      <OpenInAppHint handle={handle} />
 
       <header className="flex flex-col items-center text-center">
         <Avatar uid={profile.uid} name={name} size={88} />

@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { Spinner } from './components/ui'
-import { UpdatePrompt } from './components/UpdatePrompt'
+import { OpenInAppHint } from './components/OpenInAppHint'
 import { Icon } from './components/Icon'
 import { ActiveWorkoutProvider } from './contexts/ActiveWorkoutContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -63,7 +63,7 @@ function SetupNotice() {
 /** /add/:uid — invite links are keyed by uid so they survive a rename. */
 function AddByUid() {
   const { uid = '' } = useParams()
-  return <Navigate to={`/friends/${uid}`} replace />
+  return <Navigate to={`/friends/${uid}?invite=1`} replace />
 }
 
 function Gate() {
@@ -78,7 +78,16 @@ function Gate() {
     )
   }
 
-  if (!user) return <Login />
+  if (!user) {
+    return (
+      <>
+        <div className="flex px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] empty:hidden">
+          <OpenInAppHint />
+        </div>
+        <Login />
+      </>
+    )
+  }
 
   return (
     <SocialProvider>
@@ -119,7 +128,6 @@ export default function App() {
     <AuthProvider>
       <SettingsProvider>
         <ToastProvider>
-          <UpdatePrompt />
           <Gate />
         </ToastProvider>
       </SettingsProvider>

@@ -21,6 +21,9 @@ export default defineConfig({
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
+        // Invite links (/add/:uid) open in the installed app where the platform allows it.
+        handle_links: 'preferred',
+        launch_handler: { client_mode: ['navigate-existing', 'auto'] },
         categories: ['health', 'fitness', 'lifestyle'],
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },

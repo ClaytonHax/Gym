@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { Badge, Button, ConfirmSheet, Field, IconButton, Segmented, Sheet, Spinner } from './ui'
 import { ProofSheet, ProofWall } from './proofs'
+import { useUpdateAvailable } from './UpdatePrompt'
 import { useAuth } from '../contexts/AuthContext'
 import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
@@ -92,7 +93,8 @@ export function fmtMetric(metric: BoardMetric, value: number, unit: Unit): strin
 /* -------------------------------------------------------------------------- */
 
 export function NotificationBell() {
-  const { unread } = useSocial()
+  // A waiting app update sits in the inbox too, so it counts here.
+  const unread = useSocial().unread + (useUpdateAvailable() ? 1 : 0)
   return (
     <Link
       to="/notifications"
