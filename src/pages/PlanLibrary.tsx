@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { DayAccordion, PlanStats, SwitchPlanSheet } from '../components/planUi'
-import { AuthorLink, ByLine, DayChips } from '../components/plans'
+import { AuthorLink, ByLine, DayChips, SharePlanButton } from '../components/plans'
 import { displayOf } from '../components/social'
 import { Badge, Button, EmptyState, IconButton, SectionHeader, Sheet, Skeleton } from '../components/ui'
 import { useProfiles } from '../contexts/SocialContext'
@@ -11,6 +11,7 @@ import { PLAN_TEMPLATES } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
 import {
   useAllPublicPlans,
+  usePublicPlan,
   usePublicPlanActions,
   usedByCount,
   useRecommendedPlans,
@@ -189,12 +190,15 @@ function DetailSheet({
             <p className="whitespace-pre-line text-sm">{item.about || 'No description yet.'}</p>
             <div className="flex items-center justify-between gap-2">
               {item.authorUid ? <AuthorLink uid={item.authorUid} /> : <span className="text-sm text-[var(--color-fg-muted)]">Built-in plan</span>}
-              {item.usedBy !== undefined && item.usedBy >= 2 ? (
-                <span className="tabular flex shrink-0 items-center gap-1 text-xs text-[var(--color-fg-muted)]">
-                  <Icon name="users" size={14} />
-                  Used by {item.usedBy}
-                </span>
-              ) : null}
+              <span className="flex items-center gap-2">
+                {item.usedBy !== undefined && item.usedBy >= 2 ? (
+                  <span className="tabular flex shrink-0 items-center gap-1 text-xs text-[var(--color-fg-muted)]">
+                    <Icon name="users" size={14} />
+                    Used by {item.usedBy}
+                  </span>
+                ) : null}
+                {item.pub ? <SharePlanButton publicId={item.pub.id} name={item.name} /> : null}
+              </span>
             </div>
           </section>
           <section aria-label="Structure" className="flex flex-col gap-2">
@@ -225,6 +229,16 @@ export function PlanLibrary() {
   const { plans, activePlan } = usePlans()
   const [search, setSearch] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
+  // A shared link (/p/:id) lands here with ?plan=<id>; it may not be on the first page.
+  const [params, setParams] = useSearchParams()
+  const linked = usePublicPlan(params.get('plan') ?? undefined)
+  const linkDead = params.has('plan') && !linked.loading && !linked.plan
+
+  useEffect(() => {
+    if (!linkDead) return
+    toast('That plan isn’t shared any more.', 'error')
+    setParams({}, { replace: true })
+  }, [linkDead, toast, setParams])
   const [startId, setStartId] = useState<string | null>(null)
 
   const { starred, others } = useMemo(() => {
@@ -250,7 +264,12 @@ export function PlanLibrary() {
   const recItems = starred.map(fromPublic).filter(matches)
   const allItems = (useTemplates ? PLAN_TEMPLATES.map(fromTemplate) : others.map(fromPublic)).filter(matches)
   const everything = [...recItems, ...allItems]
-  const opened = everything.find((i) => i.key === openKey) ?? null
+  const opened = everything.find((i) => i.key === openKey) ?? (linked.plan ? fromPublic(linked.plan) : null)
+
+  function close() {
+    setOpenKey(null)
+    if (params.has('plan')) setParams({}, { replace: true })
+  }
 
   const copyFor = (i: Item | null) =>
     !i ? undefined : i.pub ? plans.find((p) => p.sharedFrom?.publicPlanId === i.pub!.id) : plans.find((p) => p.templateId === i.template?.id)
@@ -259,7 +278,7 @@ export function PlanLibrary() {
   const startPlan = startId ? (plans.find((p) => p.id === startId) ?? null) : null
 
   function added(id: string) {
-    setOpenKey(null)
+    close()
     if (!activePlan) {
       setStartId(id)
     } else {
@@ -354,7 +373,7 @@ export function PlanLibrary() {
         </>
       )}
 
-      <DetailSheet item={opened} mine={copyFor(opened)} onClose={() => setOpenKey(null)} onAdded={added} />
+      <DetailSheet item={opened} mine={copyFor(opened)} onClose={close} onAdded={added} />
       <SwitchPlanSheet plan={startPlan} onClose={() => setStartId(null)} />
     </div>
   )

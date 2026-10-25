@@ -18,6 +18,38 @@ import { daySummary, exerciseTargetLabel } from '../lib/plans'
 import type { Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
 
 /** Workout days filled orange, rest days outlined — the same chips the template cards use. */
+/** Short link that opens a published plan in the library for whoever taps it. */
+export function planShareUrl(publicId: string): string {
+  return `${window.location.origin}/p/${publicId}`
+}
+
+export async function sharePlan(publicId: string, name: string, toast: ReturnType<typeof useToast>) {
+  const url = planShareUrl(publicId)
+  const text = `Try my “${name}” plan on Gym Tracker.`
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: name, text, url })
+      return
+    }
+    await navigator.clipboard.writeText(`${text} ${url}`)
+    toast('Plan link copied.')
+  } catch (err) {
+    // NotAllowedError: the browser wants a fresh tap (e.g. after publishing first); the Share button is there now.
+    const name = (err as Error)?.name
+    if (name !== 'AbortError' && name !== 'NotAllowedError') toast('Couldn’t share the link.', 'error')
+  }
+}
+
+/** Compact "Share" for a published plan. */
+export function SharePlanButton({ publicId, name }: { publicId: string; name: string }) {
+  const toast = useToast()
+  return (
+    <Button variant="ghost" size="sm" icon="share" className="shrink-0" onClick={() => void sharePlan(publicId, name, toast)}>
+      Share
+    </Button>
+  )
+}
+
 export function DayChips({ days, className = '' }: { days: PlanDay[]; className?: string }) {
   return (
     <ul className={`flex flex-wrap gap-1.5 ${className}`} aria-label="Order of days">
@@ -181,7 +213,10 @@ export function PublicPlanSheet({ plan, onClose }: { plan: PublicPlan | null; on
             {plan.description ? <p className="text-sm">{plan.description}</p> : null}
             <div className="flex items-center justify-between gap-2">
               <AuthorLink uid={plan.authorUid} />
-              <UsedBy plan={plan} />
+              <span className="flex items-center gap-2">
+                <UsedBy plan={plan} />
+                <SharePlanButton publicId={plan.id} name={plan.name} />
+              </span>
             </div>
           </div>
           <ol className="flex flex-col gap-2">

@@ -66,6 +66,12 @@ function AddByUid() {
   return <Navigate to={`/friends/${uid}?invite=1`} replace />
 }
 
+/** /p/:pid — a shared plan link opens that plan in the library. */
+function SharedPlan() {
+  const { pid = '' } = useParams()
+  return <Navigate to={`/plans/library?plan=${encodeURIComponent(pid)}`} replace />
+}
+
 function Gate() {
   const { user, loading } = useAuth()
 
@@ -111,6 +117,7 @@ function Gate() {
         <Route path="/friends" element={<Friends />} />
         <Route path="/friends/:uid" element={<FriendProfile />} />
         <Route path="/add/:uid" element={<AddByUid />} />
+        <Route path="/p/:pid" element={<SharedPlan />} />
         <Route path="/u/:username" element={<UserLookup />} />
         <Route path="/notifications" element={<Notifications />} />
       </Route>

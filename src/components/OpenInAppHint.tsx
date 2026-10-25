@@ -5,7 +5,7 @@ import { IconButton } from './ui'
 import { isIos, isStandalone } from '../lib/push'
 
 /**
- * Invite links open the installed app on Android (the manifest's link capture),
+ * Invite and shared-plan links open the installed app on Android (the manifest's link capture),
  * but iPhone always opens them in Safari, which has its own separate login. So
  * on an iPhone browser visit from an invite, point people at the Home Screen
  * app; they can still carry on here if they don't have it.
@@ -13,7 +13,8 @@ import { isIos, isStandalone } from '../lib/push'
 export function OpenInAppHint({ handle }: { handle?: string }) {
   const { pathname, search } = useLocation()
   const [dismissed, setDismissed] = useState(false)
-  const fromInvite = pathname.startsWith('/add/') || new URLSearchParams(search).has('invite')
+  const plan = pathname.startsWith('/p/')
+  const fromInvite = plan || pathname.startsWith('/add/') || new URLSearchParams(search).has('invite')
 
   if (dismissed || !fromInvite || isStandalone() || !isIos()) return null
 
@@ -25,8 +26,15 @@ export function OpenInAppHint({ handle }: { handle?: string }) {
       <p className="min-w-0 flex-1 text-sm">
         <span className="block font-semibold">Got Gym on your Home Screen?</span>
         <span className="block text-[var(--color-fg-muted)]">
-          iPhone opens links in Safari. Open the app and search{' '}
-          {handle ? <b className="text-[var(--color-fg)]">{handle}</b> : 'their username'} in Friends, or carry on here.
+          iPhone opens links in Safari.{' '}
+          {plan ? (
+            'Open the app and find the plan in Plans → Library, or carry on here.'
+          ) : (
+            <>
+              Open the app and search {handle ? <b className="text-[var(--color-fg)]">{handle}</b> : 'their name'} in Friends, or
+              carry on here.
+            </>
+          )}
         </span>
       </p>
       <IconButton icon="x" label="Dismiss" onClick={() => setDismissed(true)} />

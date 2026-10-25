@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { DayAccordion, DeletePlanSheet, PlanSourcePill, PlanStats, SwitchPlanSheet } from '../components/planUi'
-import { PlanUpdateCard } from '../components/plans'
+import { PlanUpdateCard, sharePlan } from '../components/plans'
 import { Badge, Button, ConfirmSheet, EmptyState, Skeleton } from '../components/ui'
 import { useToast } from '../contexts/ToastContext'
 import { usePlanSync } from '../contexts/PlanSyncContext'
@@ -27,6 +27,8 @@ export function MyPlanDetail() {
   const [deleting, setDeleting] = useState<typeof plan>(null)
   const [pending, setPending] = useState<Pending | null>(null)
   const [busy, setBusy] = useState(false)
+  // Sharing needs a published copy, so "Share" on a private plan publishes first.
+  const [shareAfter, setShareAfter] = useState(false)
 
   async function run(action: () => Promise<unknown>, done: string) {
     setBusy(true)
@@ -39,6 +41,7 @@ export function MyPlanDetail() {
     } finally {
       setBusy(false)
       setPending(null)
+      setShareAfter(false)
     }
   }
 
@@ -73,12 +76,15 @@ export function MyPlanDetail() {
   const confirm =
     pending === 'publish'
       ? {
-          title: `Publish “${plan.name}”?`,
-          message:
-            'Anyone using the app can find this plan, see your name as the author and add a copy. Your logged workouts stay private.',
-          label: 'Publish',
+          title: shareAfter ? `Share “${plan.name}”?` : `Publish “${plan.name}”?`,
+          message: `${shareAfter ? 'Sharing publishes it to the library first. ' : ''}Anyone using the app can find this plan, see your name as the author and add a copy. Your logged workouts stay private.`,
+          label: shareAfter ? 'Publish & share' : 'Publish',
           tone: 'primary' as const,
-          go: () => run(() => publish(plan.id), 'Plan published.'),
+          go: () =>
+            run(async () => {
+              const publicId = await publish(plan.id)
+              if (shareAfter) await sharePlan(publicId, plan.name, toast)
+            }, shareAfter ? 'Plan published. Share the link anytime.' : 'Plan published.'),
         }
       : pending === 'unpublish'
         ? {
@@ -157,14 +163,30 @@ export function MyPlanDetail() {
                   Update published
                 </Button>
               ) : null}
+              <Button variant="secondary" size="sm" icon="share" onClick={() => void sharePlan(plan.publishedId!, plan.name, toast)}>
+                Share
+              </Button>
               <Button variant="ghost" size="sm" onClick={() => setPending('unpublish')}>
                 Unpublish
               </Button>
             </>
           ) : (
-            <Button variant="secondary" size="sm" icon="share" onClick={() => setPending('publish')}>
-              Publish
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon="share"
+                onClick={() => {
+                  setShareAfter(true)
+                  setPending('publish')
+                }}
+              >
+                Share
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setPending('publish')}>
+                Publish
+              </Button>
+            </>
           )}
           <Button
             variant="secondary"
@@ -199,7 +221,10 @@ export function MyPlanDetail() {
         message={confirm?.message ?? ''}
         confirmLabel={confirm?.label}
         tone={confirm?.tone ?? 'danger'}
-        onCancel={() => setPending(null)}
+        onCancel={() => {
+          setPending(null)
+          setShareAfter(false)
+        }}
         onConfirm={() => void confirm?.go()}
       />
     </div>
