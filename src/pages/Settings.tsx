@@ -11,7 +11,9 @@ import {
   PageTitle,
   SectionHeader,
   Segmented,
+  Toggle,
 } from '../components/ui'
+import { REST_PRESETS, defaultRestSec, fmtPreset } from '../components/RestTimer'
 import { UsernameCard } from '../components/UsernameCard'
 import { NotificationPrefs, PushToggleCard } from '../components/PushSettings'
 import { useAuth } from '../contexts/AuthContext'
@@ -223,6 +225,39 @@ export function Settings() {
               />
             </div>
           </div>
+        </Card>
+      </section>
+
+      <section>
+        <SectionHeader title="Rest timer" />
+        <Card className="flex flex-col gap-5">
+          <Toggle
+            label="Auto rest timer"
+            description="Counts down after each strength set."
+            checked={profile.restTimer !== false}
+            onChange={(next) => save({ restTimer: next })}
+          />
+          {profile.restTimer !== false ? (
+            <>
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+                  Rest length
+                </p>
+                <Segmented
+                  label="Rest length"
+                  value={String(defaultRestSec(profile.restSec))}
+                  onChange={(next) => save({ restSec: Number(next) })}
+                  options={REST_PRESETS.map((p) => ({ value: String(p), label: fmtPreset(p) }))}
+                />
+              </div>
+              <Toggle
+                label="Use plan rest times"
+                description="Exercises with their own rest in a plan use that instead."
+                checked={profile.restFollowsPlan === true}
+                onChange={(next) => save({ restFollowsPlan: next })}
+              />
+            </>
+          ) : null}
         </Card>
       </section>
 

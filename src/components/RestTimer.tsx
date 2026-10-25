@@ -1,9 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { fmtClock } from '../lib/date'
+import { useSettings } from '../contexts/SettingsContext'
 
-const PRESETS = [60, 90, 120, 180]
-const LOCAL_KEY = 'gym.restPreset'
+export const REST_PRESETS = [60, 90, 120, 180]
+// Pre-sync home of the chosen preset; still read so nobody loses their pick.
+const LEGACY_KEY = 'gym.restPreset'
+
+/** The user's default rest in seconds: their profile setting, else the old local pick, else 90. */
+export function defaultRestSec(restSec: number | undefined): number {
+  if (restSec && restSec > 0) return restSec
+  try {
+    const stored = Number(localStorage.getItem(LEGACY_KEY))
+    if (REST_PRESETS.includes(stored)) return stored
+  } catch {
+    // Storage can be blocked; the default is fine.
+  }
+  return 90
+}
 
 /** Short vibration + beep when rest is up — the phone is usually face-down. */
 function alertDone() {
@@ -30,11 +44,11 @@ function alertDone() {
 }
 
 export interface RestTimerHandle {
-  /** Start a countdown. A per-exercise `seconds` (from a plan) wins over the preset and is shown as such. */
+  /** Start a countdown. A per-exercise `seconds` (from a plan, when allowed in Settings) wins over the preset. */
   start: (seconds?: number) => void
 }
 
-const fmtPreset = (p: number) => (p < 60 ? `${p}s` : fmtClock(p))
+export const fmtPreset = (p: number) => (p < 60 ? `${p}s` : fmtClock(p))
 
 /**
  * Countdown driven by a target timestamp rather than an interval counter, so it
@@ -48,10 +62,8 @@ export function RestTimer({
 }: {
   onReady: (handle: RestTimerHandle) => void
 }) {
-  const [duration, setDuration] = useState(() => {
-    const stored = Number(localStorage.getItem(LOCAL_KEY))
-    return PRESETS.includes(stored) ? stored : 90
-  })
+  const { profile, update } = useSettings()
+  const duration = defaultRestSec(profile.restSec)
   const [endsAt, setEndsAt] = useState<number | null>(null)
   const [remaining, setRemaining] = useState(0)
   // Length of the countdown in flight — a per-exercise rest can differ from the preset.
@@ -94,8 +106,7 @@ export function RestTimer({
   }, [endsAt])
 
   function choose(seconds: number) {
-    setDuration(seconds)
-    localStorage.setItem(LOCAL_KEY, String(seconds))
+    void update({ restSec: seconds })
     if (endsAt !== null) begin(seconds, false)
   }
 
@@ -171,12 +182,13 @@ export function RestTimer({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">Rest timer</p>
           <p className="text-sm text-[var(--color-fg-muted)]">
-            Starts by itself after each strength set. Default rest: <span className="tabular font-semibold text-[var(--color-fg)]">{fmtClock(duration)}</span>, unless the exercise shows its own.
+            Starts by itself after each strength set. Rest: <span className="tabular font-semibold text-[var(--color-fg)]">{fmtClock(duration)}</span>
+            {profile.restFollowsPlan ? ', unless the exercise shows its own.' : '.'}
           </p>
         </div>
       </div>
       <div role="group" aria-label="Rest length" className="grid grid-cols-4 gap-1.5 px-3 pb-3">
-        {PRESETS.map((p) => (
+        {REST_PRESETS.map((p) => (
           <button
             key={p}
             type="button"

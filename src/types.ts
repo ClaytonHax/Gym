@@ -115,6 +115,12 @@ export interface Profile {
   heightCm?: number
   goalWeightKg?: number
   weeklyGoal: number
+  /** Auto rest countdown after strength sets. Missing means on. */
+  restTimer?: boolean
+  /** Default rest length in seconds. */
+  restSec?: number
+  /** Let a plan's per-exercise rest replace `restSec`. Missing means off. */
+  restFollowsPlan?: boolean
 }
 
 export interface PersonalRecord {
