@@ -175,8 +175,7 @@ html.light {
 
 @layer utilities {
   .safe-top {
-    /* The inset includes a margin below the notch/island; trim it so pages start higher. */
-    padding-top: max(env(safe-area-inset-top) - 14px, 0px);
+    padding-top: env(safe-area-inset-top);
   }
   .safe-bottom {
     padding-bottom: env(safe-area-inset-bottom);
