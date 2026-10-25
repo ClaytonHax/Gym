@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { Spinner } from './components/ui'
+import { UpdatePrompt } from './components/UpdatePrompt'
 import { Icon } from './components/Icon'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { SettingsProvider } from './contexts/SettingsContext'
@@ -115,6 +116,7 @@ export default function App() {
     <AuthProvider>
       <SettingsProvider>
         <ToastProvider>
+          <UpdatePrompt />
           <Gate />
         </ToastProvider>
       </SettingsProvider>

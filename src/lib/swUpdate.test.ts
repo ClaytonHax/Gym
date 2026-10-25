@@ -1,59 +1,43 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createUpdateScheduler, IDLE_MS } from './swUpdate'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { applyUpdate, BOOT_MS, registerApply, setUpdateAvailable, subscribeUpdate, updateAction } from './swUpdate'
 
-let sched: ReturnType<typeof createUpdateScheduler>
-
-beforeEach(() => vi.useFakeTimers())
 afterEach(() => {
-  sched?.stop()
+  setUpdateAvailable(false)
   document.body.innerHTML = ''
-  vi.useRealTimers()
 })
 
-describe('update scheduler', () => {
-  it('applies only after 5s idle', () => {
-    const apply = vi.fn()
-    sched = createUpdateScheduler(apply)
-    sched.notify()
-    vi.advanceTimersByTime(IDLE_MS - 1)
-    expect(apply).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(apply).toHaveBeenCalledTimes(1)
+describe('update flow', () => {
+  it('applies immediately when found right at startup', () => {
+    expect(updateAction(500, false)).toBe('apply')
+    expect(updateAction(BOOT_MS - 1, false)).toBe('apply')
   })
 
-  it('resets the timer on interaction', () => {
-    const apply = vi.fn()
-    sched = createUpdateScheduler(apply)
-    sched.notify()
-    vi.advanceTimersByTime(3000)
-    window.dispatchEvent(new Event('input'))
-    vi.advanceTimersByTime(3000)
-    expect(apply).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(2000)
-    expect(apply).toHaveBeenCalledTimes(1)
+  it('prompts when found mid-session', () => {
+    expect(updateAction(BOOT_MS, false)).toBe('prompt')
+    expect(updateAction(60_000, false)).toBe('prompt')
   })
 
-  it('does not apply while an input is focused, then applies after blur + idle', () => {
-    const input = document.createElement('input')
-    document.body.append(input)
-    input.focus()
-    const apply = vi.fn()
-    sched = createUpdateScheduler(apply)
-    sched.notify()
-    vi.advanceTimersByTime(IDLE_MS * 3)
-    expect(apply).not.toHaveBeenCalled()
-    input.blur()
-    vi.advanceTimersByTime(IDLE_MS)
-    expect(apply).toHaveBeenCalledTimes(1)
+  it('prompts instead of reloading if the user is already typing at startup', () => {
+    expect(updateAction(500, true)).toBe('prompt')
   })
 
-  it('applies immediately when the page is hidden', () => {
-    const apply = vi.fn()
-    sched = createUpdateScheduler(apply)
-    sched.notify()
-    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
-    document.dispatchEvent(new Event('visibilitychange'))
-    expect(apply).toHaveBeenCalledTimes(1)
-    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true })
+  it('notifies subscribers and replays the current state', () => {
+    const seen: boolean[] = []
+    const off = subscribeUpdate((v) => seen.push(v))
+    setUpdateAvailable(true)
+    off()
+    setUpdateAvailable(false)
+    expect(seen).toEqual([false, true])
+    const late = vi.fn()
+    setUpdateAvailable(true)
+    subscribeUpdate(late)()
+    expect(late).toHaveBeenCalledWith(true)
+  })
+
+  it('applyUpdate calls the registered activator', () => {
+    const fn = vi.fn()
+    registerApply(fn)
+    applyUpdate()
+    expect(fn).toHaveBeenCalledTimes(1)
   })
 })
