@@ -61,6 +61,8 @@ import {
   personalRecords,
   volumeOf,
 } from '../lib/stats'
+import { linkedToNext, moveItem, newSupersetId, toggleSupersetWithNext } from '../lib/supersets'
+import { HOLD_HANDLE_CLASS, useHoldToReorder } from '../hooks/useHoldToReorder'
 import type { ActiveWorkout, Exercise, LogMode, Workout, WorkoutExercise, WorkoutSet } from '../types'
 
 /**
@@ -174,6 +176,7 @@ export function WorkoutActive() {
   // Swap: the picker opens for that exercise's index.
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
   const timerRef = useRef<RestTimerHandle | null>(null)
+  const reorder = useHoldToReorder((from, to) => moveExercise(from, to))
 
   const onTimerReady = useCallback((handle: RestTimerHandle) => {
     timerRef.current = handle
@@ -324,29 +327,7 @@ export function WorkoutActive() {
   }
 
   function toggleSuperset(index: number) {
-    patch((draft) => {
-      const a = draft.exercises[index]
-      const b = draft.exercises[index + 1]
-      if (!a || !b) return draft
-      const strip = (e: WorkoutExercise): WorkoutExercise => {
-        const { supersetId: _unused, ...rest } = e
-        return rest
-      }
-      let exercises: WorkoutExercise[]
-      if (a.supersetId && a.supersetId === b.supersetId) {
-        // Unlink b; a stays grouped only if something earlier still shares its id.
-        const stillGrouped = draft.exercises.some((e, i) => i < index && e.supersetId === a.supersetId)
-        exercises = draft.exercises.map((e, i) =>
-          i === index + 1 || (i === index && !stillGrouped) ? strip(e) : e
-        )
-      } else {
-        const id = a.supersetId ?? `ss-${Date.now().toString(36)}`
-        exercises = draft.exercises.map((e, i) =>
-          i === index || i === index + 1 ? { ...e, supersetId: id } : e
-        )
-      }
-      return { ...draft, exercises }
-    })
+    patch((draft) => ({ ...draft, exercises: toggleSupersetWithNext(draft.exercises, index, newSupersetId) }))
   }
 
   function copyLastTime(exIndex: number) {
@@ -381,14 +362,8 @@ export function WorkoutActive() {
     toast('Loaded your last session’s sets.')
   }
 
-  function moveExercise(index: number, direction: -1 | 1) {
-    const target = index + direction
-    patch((draft) => {
-      if (target < 0 || target >= draft.exercises.length) return draft
-      const next = [...draft.exercises]
-      ;[next[index], next[target]] = [next[target], next[index]]
-      return { ...draft, exercises: next }
-    })
+  function moveExercise(from: number, to: number) {
+    patch((draft) => ({ ...draft, exercises: moveItem(draft.exercises, from, to) }))
   }
 
   /** Remove with an Undo that puts it back in the same place. */
@@ -717,19 +692,22 @@ export function WorkoutActive() {
             const lastSet = ex.sets[ex.sets.length - 1]
             const aim = !timed ? aimLabel(ex.sets) : null
             const nextOpen = ex.sets.findIndex((s) => !s.done)
-            const paired = exIndex < active.exercises.length - 1 && ex.supersetId && ex.supersetId === active.exercises[exIndex + 1].supersetId
+            const paired = linkedToNext(active.exercises, exIndex)
+            const inSuperset = paired || linkedToNext(active.exercises, exIndex - 1)
             return (
               <Card
                 as="li"
                 key={keyOf(ex, `${ex.exerciseId}-${exIndex}`)}
-                className={`scroll-mt-24 p-3 ${ex.supersetId ? 'border-l-4 border-l-violet-500' : ''}`}
+                {...reorder.itemProps(exIndex)}
+                className={`scroll-mt-24 p-3 ${inSuperset ? 'border-l-4 border-l-violet-500' : ''}`}
               >
-                <div className="mb-2.5 flex items-start gap-2">
+                <div {...reorder.handleProps(exIndex)} className={`mb-2.5 flex items-start gap-2 ${HOLD_HANDLE_CLASS}`}>
+                  <Icon name="grip" size={18} className="mt-0.5 -ml-1 shrink-0 text-[var(--color-fg-muted)]" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="line-clamp-2 text-base font-semibold leading-tight">{ex.name}</h2>
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
-                      {ex.supersetId ? <Badge color="#a78bfa">Paired</Badge> : null}
+                      {inSuperset ? <Badge color="#a78bfa">Superset</Badge> : null}
                     </div>
                     {timed && (ex.targetDurationSec || totalSec > 0) ? (
                       <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
@@ -779,13 +757,13 @@ export function WorkoutActive() {
                       icon="arrow-up"
                       label={`Move ${ex.name} up`}
                       disabled={exIndex === 0}
-                      onClick={() => moveExercise(exIndex, -1)}
+                      onClick={() => moveExercise(exIndex, exIndex - 1)}
                     />
                     <IconButton
                       icon="arrow-down"
                       label={`Move ${ex.name} down`}
                       disabled={exIndex === active.exercises.length - 1}
-                      onClick={() => moveExercise(exIndex, 1)}
+                      onClick={() => moveExercise(exIndex, exIndex + 1)}
                     />
                   </div>
                 </div>
@@ -904,7 +882,7 @@ export function WorkoutActive() {
                   {exIndex < active.exercises.length - 1 ? (
                     <button type="button" onClick={() => toggleSuperset(exIndex)} className={CHIP}>
                       <Icon name="link" size={14} />
-                      {paired ? 'Unpair from next exercise' : 'Pair with next exercise'}
+                      {paired ? 'Split superset' : 'Superset with next'}
                     </button>
                   ) : null}
                   {ex.notes === undefined ? (

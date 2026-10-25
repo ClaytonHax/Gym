@@ -109,17 +109,22 @@ export function IconButton({
 /* Surfaces                                                                    */
 /* -------------------------------------------------------------------------- */
 
-export function Card({
-  children,
-  className = '',
-  as: As = 'div',
-}: {
-  children: ReactNode
-  className?: string
-  as?: 'div' | 'section' | 'li' | 'article'
-}) {
-  return <As className={`card p-4 ${className}`}>{children}</As>
-}
+export const Card = forwardRef<
+  HTMLElement,
+  {
+    children: ReactNode
+    className?: string
+    style?: CSSProperties
+    as?: 'div' | 'section' | 'li' | 'article'
+  }
+>(function Card({ children, className = '', style, as: As = 'div' }, ref) {
+  return (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    <As ref={ref as any} style={style} className={`card p-4 ${className}`}>
+      {children}
+    </As>
+  )
+})
 
 export function SectionHeader({
   title,

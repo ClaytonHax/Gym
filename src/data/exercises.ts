@@ -13,6 +13,20 @@ export const MUSCLE_GROUPS: MuscleGroup[] = [
   'Other',
 ]
 
+/** Choices offered when creating a custom exercise. */
+export const EQUIPMENT = [
+  'Barbell',
+  'Dumbbell',
+  'Machine',
+  'Cable',
+  'Bodyweight',
+  'Kettlebell',
+  'Smith machine',
+  'EZ bar',
+  'Resistance band',
+  'Other',
+]
+
 /** Accent per muscle group so history and charts stay colour-consistent. */
 export const MUSCLE_COLORS: Record<MuscleGroup, string> = {
   Chest: '#f97316',

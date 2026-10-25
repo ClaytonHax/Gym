@@ -3,7 +3,7 @@ import { Icon } from './Icon'
 import { Badge, Button, Field, Sheet } from './ui'
 import { useExercises } from '../hooks/useExercises'
 import { useToast } from '../contexts/ToastContext'
-import { MUSCLE_COLORS, MUSCLE_GROUPS, matchesExercise } from '../data/exercises'
+import { EQUIPMENT, MUSCLE_COLORS, MUSCLE_GROUPS, matchesExercise } from '../data/exercises'
 import type { CardioField, Exercise, LogMode, MuscleGroup } from '../types'
 
 const CARDIO_FIELD_OPTIONS: Array<{ field: CardioField; label: string }> = [
@@ -88,6 +88,7 @@ export function ExercisePicker({
     setNewName('')
     setNewLogBy(null)
     setNewFields([])
+    setNewEquipment('Barbell')
     setNewTracksWeight(true)
   }
 
@@ -330,12 +331,33 @@ export function ExercisePicker({
             </fieldset>
           ) : (
             <>
-              <Field
-                label="Equipment"
-                value={newEquipment}
-                onChange={(e) => setNewEquipment(e.target.value)}
-                placeholder="Barbell, Dumbbell, Machine…"
-              />
+              <fieldset className="flex flex-col gap-1.5">
+                <legend className="mb-1.5 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
+                  Equipment
+                </legend>
+                <div className="flex flex-wrap gap-1.5">
+                  {EQUIPMENT.map((eq) => (
+                    <button
+                      key={eq}
+                      type="button"
+                      aria-pressed={newEquipment === eq}
+                      onClick={() => {
+                        setNewEquipment(eq)
+                        // Bodyweight moves are reps-only by default; picking a loaded tool turns weights back on.
+                        if (eq === 'Bodyweight') setNewTracksWeight(false)
+                        else if (newEquipment === 'Bodyweight') setNewTracksWeight(true)
+                      }}
+                      className={`min-h-11 rounded-full border px-3.5 text-sm font-medium transition-colors duration-200 ${
+                        newEquipment === eq
+                          ? 'border-brand-500 bg-brand-500/15 text-[var(--color-fg)]'
+                          : 'border-[var(--color-line)] bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:border-brand-500'
+                      }`}
+                    >
+                      {eq}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
               <label className="flex items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-3">
                 <input
                   type="checkbox"
