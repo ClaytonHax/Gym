@@ -18,6 +18,7 @@ import { RestTimer, type RestTimerHandle } from '../components/RestTimer'
 import { SetRow } from '../components/SetRow'
 import { TimedSetRow } from '../components/TimedSetRow'
 import { LogModeToggle } from '../components/LogModeToggle'
+import { ExerciseGuide } from '../components/ExerciseGuide'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
@@ -863,6 +864,7 @@ export function WorkoutActive() {
                   <button type="button" onClick={() => askSwap(exIndex)} className={CHIP}>
                     <Icon name="rotate" size={14} /> Swap
                   </button>
+                  <ExerciseGuide exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
                   {last ? (
                     <button type="button" onClick={() => copyLastTime(exIndex)} className={CHIP}>
                       <Icon name="copy" size={14} /> Copy last time
