@@ -3,6 +3,9 @@ export type Unit = 'kg' | 'lb'
 /** How an exercise is logged: weight × reps (missing = 'reps') or by duration. */
 export type LogMode = 'reps' | 'time'
 
+/** Optional extra numbers a timed (cardio) exercise records per set. */
+export type CardioField = 'distance' | 'speed' | 'incline' | 'level'
+
 export type MuscleGroup =
   | 'Chest'
   | 'Back'
@@ -24,6 +27,10 @@ export interface Exercise {
   tracksWeight: boolean
   /** Default log mode when added to a session; cardio defaults to 'time'. */
   logBy?: LogMode
+  /** Timed exercises: which extra fields to show per set (e.g. treadmill: speed + incline). */
+  cardioFields?: CardioField[]
+  /** Extra search terms, e.g. "cross trainer" for Elliptical. */
+  aliases?: string[]
   custom?: boolean
 }
 
@@ -43,6 +50,12 @@ export interface WorkoutSet {
   distanceKm?: number
   /** ISO start of a running stopwatch on this set; cleared when it stops. */
   timerStartedAt?: string
+  /** Timed sets only: machine resistance / level setting, e.g. bike level 8. */
+  level?: number
+  /** Timed sets only: average speed in km/h. */
+  speedKmh?: number
+  /** Timed sets only: incline in %. */
+  inclinePct?: number
 }
 
 export interface WorkoutExercise {
@@ -53,6 +66,7 @@ export interface WorkoutExercise {
   logBy?: LogMode
   /** Per-set duration target carried from a plan (timed exercises); shown as a placeholder. */
   targetDurationSec?: number
+  cardioFields?: CardioField[]
   sets: WorkoutSet[]
   notes?: string
   /** Prescribed rest after a working set; overrides the global rest preset. */
@@ -73,6 +87,8 @@ export interface Workout extends PlanTag {
   /** Denormalised so history and charts never have to re-reduce every set. */
   totalVolumeKg: number
   setCount: number
+  /** Estimated energy burned (lib/calories.ts); missing on older sessions. */
+  caloriesKcal?: number
 }
 
 /** A workout still being performed — one per user, kept in Firestore + localStorage. */
@@ -122,6 +138,7 @@ export interface PlanExercise {
   targets: string[]
   /** Timed exercises: target duration per set. */
   targetDurationSec?: number
+  cardioFields?: CardioField[]
   restSec?: number
   supersetId?: string
   /** Legacy routines saved before targets existed. */
