@@ -10,19 +10,19 @@ import { usePlanSync } from '../contexts/PlanSyncContext'
 import { PPL_PUBLIC_ID } from '../data/programs'
 import { usePlans } from '../hooks/usePlans'
 import { useAuthorPlans, usePublicPlanActions } from '../hooks/usePublicPlans'
-import { parseDayKey } from '../lib/date'
+import { dayKey, parseDayKey } from '../lib/date'
 import { samePlanContent } from '../lib/planSync'
-import { planSummary } from '../lib/plans'
+import { rotationText } from '../lib/plans'
+import { nextWorkoutLabel, nextWorkoutSlot } from '../lib/planUiLogic'
+import { workoutsByDay } from '../lib/streaks'
+import { useWorkouts } from '../hooks/useWorkouts'
 import type { Plan, PublicPlan, ScheduleSlot } from '../types'
 
 function weekdayInitial(slot: ScheduleSlot): string {
   return parseDayKey(slot.date).toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1)
 }
 
-function summaryText(plan: Pick<Plan, 'days'>): string {
-  const { length, workouts, rests } = planSummary(plan)
-  return `${length}-day cycle · ${workouts} workouts · ${rests} rest`
-}
+const summaryText = rotationText
 
 /** Seven-day look-ahead: moon for rest, filled for workouts, ring on today. */
 function WeekStrip({ slots }: { slots: ScheduleSlot[] }) {
@@ -43,7 +43,7 @@ function WeekStrip({ slots }: { slots: ScheduleSlot[] }) {
                 : 'border-[var(--color-line)] bg-[var(--color-surface-2)]'
             }`}
           >
-            <span className="text-[10px] font-bold uppercase text-[var(--color-fg-muted)]">
+            <span className="text-xs font-bold uppercase text-[var(--color-fg-muted)]">
               {weekdayInitial(slot)}
             </span>
             {rest ? (
@@ -71,7 +71,7 @@ function Onboarding() {
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">Get started</p>
         <h2 className="num-display mt-1 text-3xl">Choose your training plan</h2>
         <p className="mt-1 text-sm text-[var(--color-fg-muted)]">
-          A plan schedules every workout and rest day for you. Pick a proven one or build your own.
+          A plan tells you what to do each day, rest days included. Weights or cardio, pick one or build your own.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -82,8 +82,8 @@ function Onboarding() {
           <span className="grid size-11 place-items-center rounded-xl bg-white/20">
             <Icon name="layers" size={24} />
           </span>
-          <span className="font-display text-2xl font-bold uppercase leading-tight">Pick a premade plan</span>
-          <span className="text-sm text-white/90">Proven splits, ready to go</span>
+          <span className="font-display text-2xl font-bold uppercase leading-tight">Choose a ready-made plan</span>
+          <span className="text-sm text-white/90">Ready-made plans for weights or cardio</span>
           <span className="mt-auto flex items-center gap-1 text-sm font-bold">
             Browse plans
             <Icon name="chevron-right" size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
@@ -97,11 +97,9 @@ function Onboarding() {
             <Icon name="pencil" size={22} />
           </span>
           <span className="font-display text-2xl font-bold uppercase leading-tight">Design my own</span>
-          <span className="w-fit">
-            <Badge>For experienced lifters</Badge>
-          </span>
+          <span className="text-sm text-[var(--color-fg-muted)]">Pick your own days and exercises</span>
           <span className="mt-auto flex items-center gap-1 text-sm font-bold text-brand-400">
-            Start from scratch
+            Build a plan
             <Icon name="chevron-right" size={18} className="transition-transform duration-200 group-hover:translate-x-0.5" />
           </span>
         </Link>
@@ -118,6 +116,9 @@ export function Plans() {
   const { removePublic } = usePublicPlanActions()
   const published = useAuthorPlans(user?.uid)
   const { actionFor } = usePlanSync()
+  const { workouts } = useWorkouts()
+  const todayDone = workoutsByDay(workouts).has(dayKey())
+  const nextSlot = nextWorkoutSlot(upcoming(9), todayDone)
   const [pending, setPending] = useState<Pending | null>(null)
   const [switching, setSwitching] = useState<Plan | null>(null)
 
@@ -137,19 +138,19 @@ export function Plans() {
     switch (pending?.kind) {
       case 'delay':
         return {
-          title: 'Delay a day?',
+          title: 'Move to tomorrow?',
           message:
-            'Today becomes a rest day and your whole schedule shifts back one day. Today’s workout moves to tomorrow.',
-          label: 'Delay',
+            'Today becomes a rest day and everything after it moves back one day. Today’s workout happens tomorrow.',
+          label: 'Move to tomorrow',
           tone: 'primary' as const,
-          go: () => run(delayToday, 'Schedule shifted by a day.'),
+          go: () => run(delayToday, 'Moved to tomorrow.'),
         }
       case 'skip':
         return {
           title: 'Skip today?',
           message:
             'Today becomes a rest day and today’s workout is dropped. The rest of your schedule stays exactly as it was.',
-          label: 'Skip',
+          label: 'Skip today',
           tone: 'primary' as const,
           go: () => run(skipToday, 'Today skipped.'),
         }
@@ -197,9 +198,15 @@ export function Plans() {
               <h2 className="num-display mt-1 truncate text-3xl">{activePlan.name}</h2>
               <p className="tabular text-sm text-[var(--color-fg-muted)]">
                 {today.dayNumber > 0
-                  ? `Day ${today.dayNumber} of ${today.cycleLength} · Cycle ${today.cycle}`
+                  ? `Today is day ${today.dayNumber} of ${today.cycleLength} in your plan`
                   : `Starts ${parseDayKey(today.date).toLocaleDateString()}`}
               </p>
+              {todayDone ? (
+                <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-go-400">
+                  <Icon name="check-circle" size={16} className="shrink-0" />
+                  Today's workout is done.{nextSlot ? ` Next: ${nextWorkoutLabel(nextSlot)}.` : ''}
+                </p>
+              ) : null}
             </div>
             <IconButton
               icon="pencil"
@@ -212,21 +219,24 @@ export function Plans() {
 
           <WeekStrip slots={upcoming(7)} />
 
+          <p className="text-xs text-[var(--color-fg-muted)]">
+            Move to tomorrow: do today's workout tomorrow instead. Skip today: drop it and carry on with the plan.
+          </p>
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="secondary"
               size="sm"
               icon="arrow-right"
-              disabled={today.isRest}
+              disabled={today.isRest || todayDone}
               onClick={() => setPending({ kind: 'delay' })}
             >
-              Delay a day
+              Move to tomorrow
             </Button>
             <Button
               variant="secondary"
               size="sm"
               icon="skip-forward"
-              disabled={today.isRest}
+              disabled={today.isRest || todayDone}
               onClick={() => setPending({ kind: 'skip' })}
             >
               Skip today
@@ -250,7 +260,7 @@ export function Plans() {
           <div className="min-w-0">
             <h2 className="font-display text-xl font-semibold uppercase">No active plan</h2>
             <p className="text-sm text-[var(--color-fg-muted)]">
-              Pick one from your plans below and tap Switch to start getting a daily schedule.
+              Pick one of your plans below and tap Switch to get a daily schedule.
             </p>
           </div>
         </section>

@@ -75,7 +75,7 @@ export function MyPlanDetail() {
       ? {
           title: `Publish “${plan.name}”?`,
           message:
-            'Anyone using the app can find this plan, see your @username as the author and add a copy. Your logged workouts stay private.',
+            'Anyone using the app can find this plan, see your name as the author and add a copy. Your logged workouts stay private.',
           label: 'Publish',
           tone: 'primary' as const,
           go: () => run(() => publish(plan.id), 'Plan published.'),

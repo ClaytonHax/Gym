@@ -9,7 +9,9 @@ import { ActivityHeatmap } from '../components/ActivityHeatmap'
 import { computeStreaks } from '../lib/streaks'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { fmtDuration, fmtTime, relativeDay } from '../lib/date'
-import { fmtVolume } from '../lib/units'
+import { fmtDistance, fmtVolume, plural } from '../lib/units'
+import { useBodyLog } from '../hooks/useBodyLog'
+import { caloriesOf, cardioTotals, isCardioOnly } from '../lib/stats'
 import type { MuscleGroup, Workout } from '../types'
 
 /** Group sessions under month headings so long histories stay scannable. */
@@ -33,6 +35,7 @@ export function History() {
   const navigate = useNavigate()
   const { isRestDay, activeState } = usePlans()
   const [search, setSearch] = useState('')
+  const { latest } = useBodyLog()
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -65,7 +68,7 @@ export function History() {
         title="History"
         subtitle={
           workouts.length > 0
-            ? `${workouts.length} sessions · ${fmtVolume(totalVolume, profile.unit)} lifted · ${fmtDuration(totalTime)} trained`
+            ? `${plural(workouts.length, 'session')}${totalVolume > 0 ? ` · ${fmtVolume(totalVolume, profile.unit)} lifted` : ''} · ${fmtDuration(totalTime)} trained`
             : undefined
         }
       />
@@ -97,9 +100,8 @@ export function History() {
                 active={streaks.current > 0}
                 size="sm"
               />
-              <p className="tabular text-xs text-[var(--color-fg-muted)]">
-                Longest {streaks.longest} {streaks.mode === 'plan' ? 'day' : 'week'}
-                {streaks.longest === 1 ? '' : 's'}
+              <p className="tabular text-sm text-[var(--color-fg-muted)]">
+                Longest {plural(streaks.longest, streaks.mode === 'plan' ? 'day' : 'week')}
               </p>
             </div>
             <ActivityHeatmap workouts={workouts} isRestDay={isRestDay} variant="compact" />
@@ -147,10 +149,10 @@ export function History() {
                                 {w.planDayName ? (
                                   <Badge color="#F97316" className="mt-1">
                                     {w.planDayName === w.name ? 'Plan' : w.planDayName}
-                                    {w.planCycle ? ` · Cycle ${w.planCycle}` : ''}
+                                    {w.planCycle && w.planCycle > 1 ? ` · Round ${w.planCycle}` : ''}
                                   </Badge>
                                 ) : null}
-                                <p className="tabular text-xs text-[var(--color-fg-muted)]">
+                                <p className="tabular text-sm text-[var(--color-fg-muted)]">
                                   {relativeDay(w.startedAt)} · {fmtTime(w.startedAt)} ·{' '}
                                   {fmtDuration(w.durationSec)}
                                 </p>
@@ -175,11 +177,27 @@ export function History() {
                                   </span>
                                 ) : null}
                               </div>
-                              <p className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
-                                <span className="font-semibold text-brand-400">
-                                  {fmtVolume(w.totalVolumeKg, profile.unit)}
-                                </span>{' '}
-                                · {w.setCount} {w.setCount === 1 ? 'set' : 'sets'}
+                              <p className="tabular shrink-0 text-right text-sm text-[var(--color-fg-muted)]">
+                                {isCardioOnly(w) ? (
+                                  <>
+                                    <span className="font-semibold text-brand-400">
+                                      {Math.round(cardioTotals(w).sec / 60)} min
+                                    </span>
+                                    {cardioTotals(w).km > 0
+                                      ? ` · ${fmtDistance(cardioTotals(w).km, profile.unit)}`
+                                      : ''}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-semibold text-brand-400">
+                                      {fmtVolume(w.totalVolumeKg, profile.unit)}
+                                    </span>{' '}
+                                    · {plural(w.setCount, 'set')}
+                                  </>
+                                )}
+                                {caloriesOf(w, latest?.weightKg).kcal > 0
+                                  ? ` · ~${caloriesOf(w, latest?.weightKg).kcal} kcal`
+                                  : ''}
                               </p>
                             </div>
                           </Link>

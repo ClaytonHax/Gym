@@ -136,7 +136,7 @@ service cloud.firestore {
           (d.type == 'friend_request' && hasRequestTo(to))
           // One nudge per friend per (UTC) day: the id is fixed for the day.
           || (d.type == 'nudge' && friendOf(to) && nid == 'nudge_' + me() + '_' + dayNumber())
-          || (d.type in ['friend_accept', 'kudos', 'workout', 'challenge_invite', 'challenge_join'] && friendOf(to))
+          || (d.type in ['friend_accept', 'kudos', 'workout', 'challenge_invite', 'challenge_join', 'challenge_left'] && friendOf(to))
         );
     }
 
@@ -212,7 +212,7 @@ service cloud.firestore {
     match /challenges/{cid} {
       allow read: if signedIn() && me() in resource.data.members;
       allow create: if signedIn() && validChallenge();
-      // Members can join, decline and post their own score — nothing else.
+      // Members can join, decline (or leave: decline after accepting) and post their own score — nothing else.
       allow update: if signedIn() && me() in resource.data.members
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scores', 'accepted', 'declined'])
         && request.resource.data.scores.diff(resource.data.scores).affectedKeys().hasOnly([me()])

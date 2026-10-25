@@ -27,7 +27,9 @@ import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { usePlans } from '../hooks/usePlans'
 import { StarterPlans } from '../components/plans'
-import { estimateMinutes, setCountOf, startPlanDay } from '../lib/plans'
+import { HomeInstallBanner } from '../components/InstallPrompt'
+import { daySummary, startPlanDay } from '../lib/plans'
+import { nextWorkoutLabel, nextWorkoutSlot } from '../lib/planUiLogic'
 import { computeStreaks, workoutsByDay } from '../lib/streaks'
 import { fmtVolume, fmtWeight } from '../lib/units'
 import { addDays, dayKey, fmtDuration, parseDayKey, relativeDay, startOfWeek } from '../lib/date'
@@ -272,17 +274,22 @@ export function Dashboard() {
   )
   const byDay = useMemo(() => workoutsByDay(workouts), [workouts])
   const week = useMemo(() => upcoming(7), [upcoming])
-  const nextWorkout = useMemo(() => upcoming(9).find((x) => !x.isRest && x.day), [upcoming])
   const prs = useMemo(() => personalRecords(workouts).slice(0, 3), [workouts])
   const bwSeries = useMemo(() => bodyWeightSeries(entries, 90), [entries])
 
   const weekVolume = thisWeek.reduce((s, w) => s + w.totalVolumeKg, 0)
   const weekSets = thisWeek.reduce((s, w) => s + w.setCount, 0)
+  const weekMinutes = Math.round(thisWeek.reduce((s, w) => s + w.durationSec, 0) / 60)
+  const weekKcal = thisWeek.reduce((s, w) => s + (w.caloriesKcal ?? 0), 0)
+  // Cardio-only people never see "0 kg lifted" or a muscle recovery list.
+  const lifts = workouts.some((w) => w.totalVolumeKg > 0)
   const recent = workouts.slice(0, 3)
 
   const weightDelta = latest && previous ? latest.weightKg - previous.weightKg : null
 
   const todayDone = byDay.has(dayKey())
+  // Once today's workout is done, "next" starts from tomorrow.
+  const nextWorkout = useMemo(() => nextWorkoutSlot(upcoming(9), todayDone), [upcoming, todayDone])
 
   function startToday() {
     if (!activePlan || !today || today.isRest || !today.day) return
@@ -311,23 +318,27 @@ export function Dashboard() {
         <Link
           to="/body"
           aria-label="Body weight"
-          className="grid size-11 shrink-0 place-items-center rounded-xl border border-[var(--color-line)]
-            bg-[var(--color-surface)] text-[var(--color-fg-muted)] transition-colors duration-200
-            hover:border-brand-500/60 hover:text-brand-400"
+          className="flex h-14 min-w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border
+            border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[var(--color-fg-muted)] transition-colors
+            duration-200 hover:border-brand-500/60 hover:text-brand-400"
         >
           <Icon name="scale" size={20} />
+          <span className="text-xs font-medium leading-none">Weight</span>
         </Link>
         <Link
           to="/settings"
           aria-label="Settings"
-          className="grid size-11 shrink-0 place-items-center rounded-xl border border-[var(--color-line)]
-            bg-[var(--color-surface)] text-[var(--color-fg-muted)] transition-colors duration-200
-            hover:border-brand-500/60 hover:text-brand-400"
+          className="flex h-14 min-w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl border
+            border-[var(--color-line)] bg-[var(--color-surface)] px-1.5 text-[var(--color-fg-muted)] transition-colors
+            duration-200 hover:border-brand-500/60 hover:text-brand-400"
         >
           <Icon name="settings" size={20} />
+          <span className="text-xs font-medium leading-none">Settings</span>
         </Link>
         </div>
       </header>
+
+      <HomeInstallBanner />
 
       {/* Today — the one thing you open this app to do. */}
       <section aria-label="Today" className="card-accent rounded-2xl p-5">
@@ -346,9 +357,9 @@ export function Dashboard() {
         ) : !activePlan || !today ? (
           <>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-400">No active plan</p>
-            <h2 className="mt-1 font-display text-4xl font-bold leading-none">Pick your split</h2>
+            <h2 className="mt-1 font-display text-4xl font-bold leading-none">Choose a plan</h2>
             <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
-              Choose a plan and the app tells you what to train every day, rest days included.
+              Pick a plan and the app tells you what to do each day, rest days included. Weights or cardio.
             </p>
             <div className="mt-4">
               <StarterPlans />
@@ -371,7 +382,7 @@ export function Dashboard() {
             </h2>
             <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
               {nextWorkout
-                ? `Up next: ${nextWorkout.day?.name} on ${parseDayKey(nextWorkout.date).toLocaleDateString(undefined, { weekday: 'long' })}.`
+                ? `Next workout - ${nextWorkoutLabel(nextWorkout)}. Come back then.`
                 : 'Nice work. Recover well.'}
             </p>
           </>
@@ -387,7 +398,7 @@ export function Dashboard() {
             </h2>
             <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
               {nextWorkout?.day
-                ? `Next up: ${nextWorkout.day.name}${nextWorkout.date === today.date ? '' : ` on ${parseDayKey(nextWorkout.date).toLocaleDateString(undefined, { weekday: 'long' })}`}.`
+                ? `Next workout - ${nextWorkoutLabel(nextWorkout)}.`
                 : 'Recovery is part of the plan.'}
             </p>
             <Button variant="secondary" size="lg" full onClick={() => navigate('/workout')} className="mt-4">
@@ -397,40 +408,42 @@ export function Dashboard() {
         ) : (
           <>
             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-brand-400">
-              Day {today.dayNumber} of {today.cycleLength} · Cycle {today.cycle}
+              Day {today.dayNumber} of {today.cycleLength} in your plan
             </p>
             <h2 className="mt-1 font-display text-5xl font-bold leading-none">{today.day.name}</h2>
             {today.day.focus ? (
               <p className="mt-1 text-sm font-medium text-[var(--color-fg-muted)]">{today.day.focus}</p>
             ) : null}
             <p className="tabular mt-3 text-xs font-semibold text-[var(--color-fg-muted)]">
-              {today.day.exercises.length} exercises · {setCountOf(today.day.exercises)} sets · ~
-              {estimateMinutes(today.day.exercises)} min
+              {daySummary(today.day.exercises)}
             </p>
             <Button variant="go" size="lg" full icon="play" onClick={startToday} className="mt-4 text-lg">
               Start {today.day.name}
             </Button>
-            <div className="mt-2 flex gap-2">
-              <Button variant="ghost" size="sm" icon="arrow-right" onClick={() => setConfirm('delay')} className="flex-1">
-                Delay a day
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Button variant="ghost" size="sm" icon="arrow-right" onClick={() => setConfirm('delay')}>
+                Move to tomorrow
               </Button>
-              <Button variant="ghost" size="sm" icon="skip-forward" onClick={() => setConfirm('skip')} className="flex-1">
-                Skip
+              <Button variant="ghost" size="sm" icon="skip-forward" onClick={() => setConfirm('skip')}>
+                Skip today
               </Button>
             </div>
+            <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+              Move to tomorrow: do this workout tomorrow instead. Skip today: drop it and carry on.
+            </p>
           </>
         )}
       </section>
 
       <ConfirmSheet
         open={confirm !== null}
-        title={confirm === 'delay' ? 'Delay a day?' : 'Skip today?'}
+        title={confirm === 'delay' ? 'Move to tomorrow?' : 'Skip today?'}
         message={
           confirm === 'delay'
-            ? "Today becomes a rest day and the whole schedule shifts back one day, so tomorrow you'll do today's workout."
+            ? "Today becomes a rest day and everything after it moves back one day, so tomorrow you'll do today's workout."
             : "Today becomes a rest day and today's workout is dropped. The rest of the schedule stays where it is."
         }
-        confirmLabel={confirm === 'delay' ? 'Delay a day' : 'Skip today'}
+        confirmLabel={confirm === 'delay' ? 'Move to tomorrow' : 'Skip today'}
         tone="primary"
         onConfirm={confirmAdjust}
         onCancel={() => setConfirm(null)}
@@ -463,14 +476,25 @@ export function Dashboard() {
           </>
         ) : (
           <>
-            <StatTile
-              label="Week volume"
-              value={fmtVolume(weekVolume, unit).split(' ')[0]}
-              unit={unit}
-              icon="layers"
-              accent="go"
-              delta={`${weekSets} ${weekSets === 1 ? 'set' : 'sets'} logged`}
-            />
+            {lifts && weekVolume > 0 ? (
+              <StatTile
+                label="Weight lifted this week"
+                value={fmtVolume(weekVolume, unit).split(' ')[0]}
+                unit={unit}
+                icon="layers"
+                accent="go"
+                delta={`${weekSets} ${weekSets === 1 ? 'set' : 'sets'} logged`}
+              />
+            ) : (
+              <StatTile
+                label="Active minutes this week"
+                value={String(weekMinutes)}
+                unit="min"
+                icon="layers"
+                accent="go"
+                delta={weekKcal > 0 ? `~${weekKcal} kcal (estimate)` : `${thisWeek.length} ${thisWeek.length === 1 ? 'workout' : 'workouts'}`}
+              />
+            )}
             <StatTile
               label="Body weight"
               value={latest ? fmtWeight(latest.weightKg, unit, false) : '—'}
@@ -480,7 +504,7 @@ export function Dashboard() {
               delta={
                 weightDelta === null
                   ? 'Log your weight'
-                  : `${weightDelta > 0 ? '+' : ''}${fmtWeight(Math.abs(weightDelta), unit)} since last`
+                  : `${weightDelta > 0 ? '+' : weightDelta < 0 ? '−' : ''}${fmtWeight(Math.abs(weightDelta), unit)} since last`
               }
               trend={weightDelta === null || weightDelta === 0 ? 'flat' : weightDelta > 0 ? 'up' : 'down'}
             />
@@ -488,7 +512,7 @@ export function Dashboard() {
         )}
       </section>
 
-      {workouts.length > 0 ? <RecoveryCard workouts={workouts} /> : null}
+      {lifts ? <RecoveryCard workouts={workouts} /> : null}
 
       <section>
         <SectionHeader
@@ -546,7 +570,7 @@ export function Dashboard() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{pr.name}</span>
                   <span className="tabular block text-xs text-[var(--color-fg-muted)]">
-                    {fmtWeight(pr.bestWeightKg, unit)} × {pr.bestReps} · est. 1RM{' '}
+                    {fmtWeight(pr.bestWeightKg, unit)} × {pr.bestReps} · best single lift (est.){' '}
                     {fmtWeight(pr.estimated1rmKg, unit)}
                   </span>
                 </span>
@@ -577,7 +601,7 @@ export function Dashboard() {
           <EmptyState
             icon="dumbbell"
             title="No workouts yet"
-            message="Start your first session and it'll show up here with your volume, sets and PRs."
+            message="Start your first session and it'll show up here with your sets and personal bests."
             action={
               <Button variant="go" icon="play" onClick={() => navigate('/workout')}>
                 Start workout
@@ -600,10 +624,10 @@ export function Dashboard() {
                   </span>
                   <span className="tabular shrink-0 text-right">
                     <span className="block font-display text-lg font-semibold text-brand-400">
-                      {fmtVolume(w.totalVolumeKg, unit).split(' ')[0]}
+                      {w.totalVolumeKg > 0 ? fmtVolume(w.totalVolumeKg, unit).split(' ')[0] : Math.round(w.durationSec / 60)}
                     </span>
-                    <span className="block text-[10px] uppercase tracking-wider text-[var(--color-fg-muted)]">
-                      {unit} volume
+                    <span className="block text-xs uppercase tracking-wider text-[var(--color-fg-muted)]">
+                      {w.totalVolumeKg > 0 ? `${unit} lifted` : 'minutes'}
                     </span>
                   </span>
                   <Icon name="chevron-right" size={16} className="shrink-0 text-[var(--color-fg-muted)]" />

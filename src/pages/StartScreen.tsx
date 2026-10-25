@@ -10,9 +10,10 @@ import { useRoutines } from '../hooks/useRoutines'
 import { usePlans } from '../hooks/usePlans'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { planToExercises } from '../data/programs'
+import { toWorkoutExercise, withCardioFields, attachCardioFields } from '../lib/workoutExercise'
 import { fmtDuration } from '../lib/date'
 import { estimateMinutes, exerciseTargetLabel, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
-import type { ActiveWorkout, Exercise, PlanExercise, Routine, WorkoutExercise } from '../types'
+import type { ActiveWorkout, PlanExercise, Routine, WorkoutExercise } from '../types'
 
 function defaultName(): string {
   const h = new Date().getHours()
@@ -94,21 +95,16 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
   function startPlanned(index: number) {
     if (!activePlan || !activeState) return
     const slot = scheduleFor(activePlan, activeState, today?.date ?? new Date())
-    onStart(startPlanDay(activePlan, { ...slot, day: activePlan.days[index], dayIndex: index, isRest: false }))
+    onStart(
+      withCardioFields(
+        startPlanDay(activePlan, { ...slot, day: activePlan.days[index], dayIndex: index, isRest: false }),
+        activePlan.days[index].exercises
+      )
+    )
   }
 
   function start(name: string, exercises: WorkoutExercise[]) {
     onStart({ name, startedAt: new Date().toISOString(), exercises })
-  }
-
-  function toExercise(ex: Exercise): WorkoutExercise {
-    return {
-      exerciseId: ex.id,
-      name: ex.name,
-      muscle: ex.muscle,
-      tracksWeight: ex.tracksWeight,
-      sets: [{ weightKg: 0, reps: 0, done: false }],
-    }
   }
 
   return (
@@ -143,7 +139,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
           <div className="card-accent overflow-hidden">
             <div className="p-4 pb-3">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-400">
-                Today · Day {today.dayNumber} of {today.cycleLength} · Cycle {today.cycle}
+                Today · Day {today.dayNumber} of {today.cycleLength}{today.cycle > 1 ? ` · Round ${today.cycle}` : ''}
               </p>
               <h2 className="num-display mt-1 text-4xl">{todayDay.name}</h2>
               {todayDay.focus ? (
@@ -179,7 +175,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
                 variant="go"
                 size="md"
                 icon="play"
-                onClick={() => onStart(startPlanDay(activePlan, today))}
+                onClick={() => onStart(withCardioFields(startPlanDay(activePlan, today), todayDay.exercises))}
               >
                 Start
               </Button>
@@ -227,7 +223,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
         </div>
         {routines.length === 0 ? (
           <p className="card p-4 text-sm text-[var(--color-fg-muted)]">
-            Build your own with “New”, or tick “Save as a routine” when you finish a session.
+            Build your own with “New”, or choose “Save this workout to reuse later” when you finish a session.
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -240,7 +236,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
                   ...e,
                   targets: e.targets ?? Array.from({ length: e.sets ?? 3 }, () => ''),
                 }))}
-                onStart={() => start(r.name, planToExercises(r.exercises))}
+                onStart={() => start(r.name, attachCardioFields(planToExercises(r.exercises), r.exercises))}
                 actions={
                   <div className="-mr-2 -mt-1 flex">
                     <IconButton
@@ -302,7 +298,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
       <ExercisePicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        onPick={(picked) => start(defaultName(), picked.map(toExercise))}
+        onPick={(picked) => start(defaultName(), picked.map(toWorkoutExercise))}
       />
       <RoutineBuilder open={builderOpen} onClose={() => setBuilderOpen(false)} routine={editing} />
     </div>

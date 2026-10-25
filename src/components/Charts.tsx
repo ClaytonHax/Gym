@@ -18,7 +18,7 @@ import {
 } from 'recharts'
 import { useSettings } from '../contexts/SettingsContext'
 import { kgTo } from '../lib/units'
-import type { TrendPoint } from '../lib/stats'
+import { niceTicks, type TrendPoint } from '../lib/stats'
 
 const BRAND = '#f97316'
 const GO = '#22c55e'
@@ -149,12 +149,29 @@ export function BodyWeightChart({
   )
 }
 
-/** Weekly training volume. */
-export function VolumeChart({ data }: { data: TrendPoint[] }) {
-  const theme = useChartTheme()
-  const unit = useSettings().profile.unit
+/** "2.5k" for big numbers; never rounds two different ticks to the same label. */
+function shortNumber(v: number): string {
+  if (v < 1000) return String(v)
+  return `${Math.round((v / 1000) * 10) / 10}k`
+}
 
-  const points = data.map((d) => ({ ...d, value: Math.round(kgTo(unit, d.value)) }))
+/** Bar chart of one number per week, with unique, evenly spaced y ticks. */
+export function WeeklyBarChart({
+  data,
+  name,
+  unitLabel,
+  color = GO,
+  convert,
+}: {
+  data: TrendPoint[]
+  name: string
+  unitLabel: string
+  color?: string
+  convert?: (v: number) => number
+}) {
+  const theme = useChartTheme()
+  const points = data.map((d) => ({ ...d, value: Math.round(convert ? convert(d.value) : d.value) }))
+  const ticks = niceTicks(Math.max(0, ...points.map((p) => p.value)))
 
   return (
     <ChartFrame height={190}>
@@ -174,7 +191,10 @@ export function VolumeChart({ data }: { data: TrendPoint[] }) {
           tickLine={false}
           axisLine={false}
           width={44}
-          tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
+          ticks={ticks}
+          domain={[0, ticks[ticks.length - 1]]}
+          interval={0}
+          tickFormatter={shortNumber}
         />
         <Tooltip
           cursor={{ fill: `${BRAND}14` }}
@@ -184,18 +204,31 @@ export function VolumeChart({ data }: { data: TrendPoint[] }) {
                 label={`Week of ${label}`}
                 rows={[
                   {
-                    name: 'Volume',
-                    value: `${Number(payload[0].value).toLocaleString()} ${unit}`,
-                    color: GO,
+                    name,
+                    value: `${Number(payload[0].value).toLocaleString()} ${unitLabel}`,
+                    color,
                   },
                 ]}
               />
             ) : null
           }
         />
-        <Bar dataKey="value" fill={GO} radius={[6, 6, 0, 0]} maxBarSize={38} />
+        <Bar dataKey="value" fill={color} radius={[6, 6, 0, 0]} maxBarSize={38} />
       </BarChart>
     </ChartFrame>
+  )
+}
+
+/** Weekly training volume. */
+export function VolumeChart({ data }: { data: TrendPoint[] }) {
+  const unit = useSettings().profile.unit
+  return (
+    <WeeklyBarChart
+      data={data}
+      name="Volume"
+      unitLabel={unit}
+      convert={(v) => kgTo(unit, v)}
+    />
   )
 }
 

@@ -20,13 +20,13 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useToast } from '../contexts/ToastContext'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { dayKey, fmtDateLong, parseDayKey } from '../lib/date'
-import { fmtWeight, kgTo, toKg } from '../lib/units'
+import { fmtWeight, kgTo, plural, toKg } from '../lib/units'
 import { bodyWeightSeries } from '../lib/stats'
 
 type Range = '30' | '90' | '365'
 
 export function Body() {
-  const { profile } = useSettings()
+  const { profile, update } = useSettings()
   const toast = useToast()
   const { entries, loading, saveEntry, deleteEntry, latest } = useBodyLog()
   const unit = profile.unit
@@ -43,6 +43,15 @@ export function Body() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // Quick "today" entry and goal editor shown right on the page.
+  const [quickWeight, setQuickWeight] = useState('')
+  const [quickError, setQuickError] = useState('')
+  const [quickSaving, setQuickSaving] = useState(false)
+  const [goalText, setGoalText] = useState('')
+  const [goalError, setGoalError] = useState('')
+  const [goalSaving, setGoalSaving] = useState(false)
+  const [editingGoal, setEditingGoal] = useState(false)
+
   const series = useMemo(() => bodyWeightSeries(entries, Number(range)), [entries, range])
 
   /** Change over the selected window, first reading vs latest. */
@@ -54,10 +63,60 @@ export function Body() {
   const goalDelta =
     profile.goalWeightKg && latest ? latest.weightKg - profile.goalWeightKg : null
 
+  /** Oldest reading, so "lost so far" has a starting point. */
+  const startWeightKg = entries.length > 0 ? entries[entries.length - 1].weightKg : null
+  const goalKg = profile.goalWeightKg
+  const losing = goalKg && startWeightKg ? goalKg < startWeightKg : false
+  const toGo = goalKg && latest ? (losing ? latest.weightKg - goalKg : goalKg - latest.weightKg) : null
+  const progressPct =
+    goalKg && latest && startWeightKg && Math.abs(startWeightKg - goalKg) > 0.1
+      ? Math.max(0, Math.min(100, ((startWeightKg - latest.weightKg) / (startWeightKg - goalKg)) * 100))
+      : null
+
   const bmi =
     profile.heightCm && latest
       ? latest.weightKg / (profile.heightCm / 100) ** 2
       : null
+
+  async function quickLog(e: React.FormEvent) {
+    e.preventDefault()
+    const value = Number(quickWeight)
+    if (!quickWeight || Number.isNaN(value) || value <= 0 || toKg(unit, value) > 500) {
+      setQuickError(`Type your weight in ${unit}, for example ${unit === 'kg' ? '82.5' : '182'}.`)
+      return
+    }
+    setQuickSaving(true)
+    setQuickError('')
+    try {
+      await saveEntry({ date: dayKey(), weightKg: toKg(unit, value) })
+      toast('Weight saved for today.')
+      setQuickWeight('')
+    } catch {
+      setQuickError('Could not save. Check your connection and try again.')
+    } finally {
+      setQuickSaving(false)
+    }
+  }
+
+  async function saveGoal(e: React.FormEvent) {
+    e.preventDefault()
+    const value = Number(goalText)
+    if (!goalText || Number.isNaN(value) || value <= 0 || toKg(unit, value) > 500) {
+      setGoalError(`Type the weight you want to reach in ${unit}.`)
+      return
+    }
+    setGoalSaving(true)
+    setGoalError('')
+    try {
+      await update({ goalWeightKg: toKg(unit, value) })
+      toast('Goal saved.')
+      setEditingGoal(false)
+    } catch {
+      setGoalError('Could not save your goal. Try again.')
+    } finally {
+      setGoalSaving(false)
+    }
+  }
 
   function openNew() {
     setEditingDate(null)
@@ -118,11 +177,33 @@ export function Body() {
 
   return (
     <div className="animate-rise flex flex-col gap-6">
-      <PageTitle title="Body" subtitle="Weight, composition and trend." />
+      <PageTitle title="Body" subtitle="Your weight, your goal and how you are trending." />
 
-      <Button size="lg" variant="go" full icon="plus" onClick={openNew}>
-        Log today’s weight
-      </Button>
+      <Card>
+        <form onSubmit={quickLog} className="flex flex-col gap-3" noValidate>
+          <Field
+            label={`Today’s weight (${unit})`}
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            min="0"
+            value={quickWeight}
+            onChange={(e) => setQuickWeight(e.target.value)}
+            suffix={unit}
+            placeholder={latest ? String(Math.round(kgTo(unit, latest.weightKg) * 10) / 10) : '0.0'}
+            hint="Your weight is also used to estimate calories burned in workouts."
+            error={quickError || undefined}
+          />
+          <div className="flex gap-3">
+            <Button type="submit" size="lg" variant="go" full icon="check" loading={quickSaving}>
+              Log today’s weight
+            </Button>
+            <Button type="button" size="lg" variant="secondary" onClick={openNew}>
+              More options
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {loading ? (
         <div className="grid grid-cols-2 gap-3">
@@ -142,6 +223,95 @@ export function Body() {
         />
       ) : (
         <>
+          <section aria-label="Goal progress">
+            <SectionHeader title="Your goal" />
+            <Card className="flex flex-col gap-3">
+              {goalKg && !editingGoal ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    {[
+                      { label: 'Now', value: fmtWeight(latest!.weightKg, unit) },
+                      { label: 'Goal', value: fmtWeight(goalKg, unit) },
+                      {
+                        label: toGo !== null && toGo > 0.05 ? 'To go' : 'Status',
+                        value:
+                          toGo !== null && toGo > 0.05
+                            ? fmtWeight(toGo, unit)
+                            : 'Goal reached',
+                      },
+                    ].map((t) => (
+                      <div key={t.label} className="rounded-xl bg-[var(--color-surface-2)] px-2 py-3">
+                        <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                          {t.label}
+                        </p>
+                        <p className="tabular font-display text-lg font-semibold leading-tight">{t.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {progressPct !== null ? (
+                    <div>
+                      <div
+                        role="progressbar"
+                        aria-label="Progress toward goal weight"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(progressPct)}
+                        className="h-3 overflow-hidden rounded-full bg-[var(--color-surface-2)]"
+                      >
+                        <div
+                          className="h-full rounded-full bg-go-400 transition-[width] duration-300 motion-reduce:transition-none"
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                      <p className="mt-1.5 text-sm text-[var(--color-fg-muted)]">
+                        {Math.round(progressPct)}% of the way from {fmtWeight(startWeightKg!, unit)}
+                        {windowDelta !== null && windowDelta !== 0
+                          ? `. Trend: ${windowDelta < 0 ? 'down' : 'up'} ${fmtWeight(Math.abs(windowDelta), unit)} in the last ${range} days`
+                          : ''}
+                        .
+                      </p>
+                    </div>
+                  ) : null}
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setGoalText(String(Math.round(kgTo(unit, goalKg) * 10) / 10))
+                      setEditingGoal(true)
+                    }}
+                  >
+                    Change goal weight
+                  </Button>
+                </>
+              ) : (
+                <form onSubmit={saveGoal} className="flex flex-col gap-3" noValidate>
+                  <Field
+                    label={`Goal weight (${unit})`}
+                    type="number"
+                    inputMode="decimal"
+                    step="0.1"
+                    min="0"
+                    value={goalText}
+                    onChange={(e) => setGoalText(e.target.value)}
+                    suffix={unit}
+                    placeholder={unit === 'kg' ? 'e.g. 75' : 'e.g. 165'}
+                    hint="The weight you would like to reach."
+                    error={goalError || undefined}
+                  />
+                  <div className="flex gap-3">
+                    {editingGoal ? (
+                      <Button type="button" variant="secondary" full onClick={() => setEditingGoal(false)}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                    <Button type="submit" full loading={goalSaving}>
+                      Save goal
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </Card>
+          </section>
+
           <section aria-label="Body stats" className="grid grid-cols-2 gap-3">
             <StatTile
               label="Current"
@@ -162,7 +332,7 @@ export function Body() {
               icon="trending"
               accent="sky"
               trend={windowDelta === null || windowDelta === 0 ? 'flat' : windowDelta > 0 ? 'up' : 'down'}
-              delta={windowDelta === null ? 'Need two entries' : `over ${series.length} weigh-ins`}
+              delta={windowDelta === null ? 'Need two entries' : `over ${plural(series.length, 'weigh-in')}`}
             />
             {goalDelta !== null ? (
               <StatTile
@@ -250,13 +420,13 @@ export function Body() {
             </Card>
           </section>
 
-          {!profile.goalWeightKg || !profile.heightCm ? (
+          {!profile.heightCm ? (
             <Card className="flex items-center gap-3">
               <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-500/10 text-brand-400">
                 <Icon name="target" size={17} />
               </span>
               <p className="flex-1 text-sm text-[var(--color-fg-muted)]">
-                Add your height and goal weight in Settings to unlock BMI and goal tracking.
+                Add your height in Settings to see your BMI.
               </p>
             </Card>
           ) : null}

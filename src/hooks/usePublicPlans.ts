@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
-import { cloneDays, planSummary, templateToPlanDays } from '../lib/plans'
+import { cloneDays, planSummary, rotationText, templateToPlanDays } from '../lib/plans'
 import type { DayKey, FirestoreTime, Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
 import { isoOf } from '../lib/planSync'
 import { clean, usePlans } from './usePlans'
@@ -41,8 +41,7 @@ export function usedByCount(p: Pick<PublicPlan, 'usedBy'>): number {
 
 /** "8-day cycle · 6 workouts · 2 rest" — the tagline stored on a published plan (≤ 80 chars). */
 export function taglineOf(days: PlanDay[]): string {
-  const { length, workouts, rests } = planSummary({ days })
-  return `${length}-day cycle · ${workouts} workouts · ${rests} rest`
+  return rotationText({ days })
 }
 
 interface Stream<T> {

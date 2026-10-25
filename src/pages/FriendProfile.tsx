@@ -9,7 +9,6 @@ import {
   Card,
   ConfirmSheet,
   EmptyState,
-  IconButton,
   SectionHeader,
   Segmented,
   Skeleton,
@@ -36,6 +35,8 @@ import { addDays, dayKey } from '../lib/date'
 import { fmtWeight } from '../lib/units'
 import {
   challengeScore,
+  challengeState,
+  whoLabel,
   lastTrainedLabel,
   liveStreak,
   METRICS,
@@ -153,7 +154,7 @@ export function FriendProfile() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { profile: settings } = useSettings()
-  const { friends, isFriend, unfriend } = useSocial()
+  const { friends, isFriend, unfriend, challenges } = useSocial()
   const toast = useToast()
   const { stats: myStats, workouts } = useMyPublicStats()
   const friend = friends.find((f) => f.uid === friendUid)
@@ -206,7 +207,14 @@ export function FriendProfile() {
     challengeScore(workouts, metric, dayKey(), dayKey(addDays(new Date(), days - 1)))
 
   const back = (
-    <IconButton icon="chevron-left" label="Back" onClick={() => navigate(-1)} className="-ml-2" />
+    <Button variant="ghost" size="sm" icon="chevron-left" onClick={() => navigate(-1)} className="-ml-2">
+      Back
+    </Button>
+  )
+
+  // Running battles you share: removing them takes you out of those.
+  const sharedBattles = challenges.filter(
+    (c) => c.members.includes(friendUid) && !c.declined.includes(user?.uid ?? '') && challengeState(c) !== 'finished'
   )
 
   if (!friendNow && stranger === undefined) {
@@ -258,7 +266,7 @@ export function FriendProfile() {
             </Button>
           </div>
 
-          <HeadToHead mine={myStats} theirs={stats} theirName={profile.username} />
+          <HeadToHead mine={myStats} theirs={stats} theirName={name} />
 
           <section aria-label="Activity">
             <SectionHeader title="Activity" />
@@ -356,15 +364,19 @@ export function FriendProfile() {
           />
           <ConfirmSheet
             open={confirmUnfriend}
-            title={`Remove @${profile.username}?`}
-            message="You’ll stop seeing each other’s workouts and stats. You can add each other again any time."
+            title={`Remove ${whoLabel(profile)}?`}
+            message={`You’ll stop seeing each other’s workouts and stats. You can add each other again any time.${
+              sharedBattles.length > 0
+                ? ` You have ${sharedBattles.length} battle${sharedBattles.length === 1 ? '' : 's'} running together. You’ll leave ${sharedBattles.length === 1 ? 'it' : 'them'}: your score stops counting and you show as “Left” for them, who get a notice.`
+                : ''
+            }`}
             confirmLabel="Remove"
             onCancel={() => setConfirmUnfriend(false)}
             onConfirm={async () => {
               setConfirmUnfriend(false)
               try {
                 await unfriend(profile.uid)
-                toast(`Removed @${profile.username}.`, 'info')
+                toast(`Removed ${whoLabel(profile)}.`, 'info')
                 navigate('/friends?tab=friends', { replace: true })
               } catch {
                 toast('Couldn’t remove that friend.', 'error')

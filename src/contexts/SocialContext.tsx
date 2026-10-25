@@ -30,6 +30,7 @@ import {
 import { db } from '../lib/firebase'
 import { sendPush } from '../lib/push'
 import {
+  challengeState,
   describeNotification,
   normalizeUsername,
   suggestUsername,
@@ -95,6 +96,8 @@ interface SocialValue {
   }) => Promise<void>
   joinChallenge: (c: Challenge, myScore: number) => Promise<void>
   declineChallenge: (c: Challenge) => Promise<void>
+  /** Step out of a challenge you joined; you stay listed as "Left" and no longer rank. */
+  leaveChallenge: (c: Challenge) => Promise<void>
   deleteChallenge: (c: Challenge) => Promise<void>
   postScore: (c: Challenge, score: number) => Promise<void>
   markRead: (ids?: string[]) => Promise<void>
@@ -380,7 +383,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
           const fresh = snap.docChanges().filter((c) => c.type === 'added' && !c.doc.data().read)
           for (const change of fresh.slice(0, 2)) {
             const n = list.find((x) => x.id === change.doc.id)
-            if (n) toast(describeNotification(n, profilesRef.current[n.from]?.username).title, 'info')
+            if (n) toast(describeNotification(n, profilesRef.current[n.from]).title, 'info')
           }
         }
         first = false
@@ -579,12 +582,26 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   const unfriend = useCallback(
     async (other: string) => {
       const uid = needUid()
+      // Shared challenges that are still running: you step out of them, since you
+      // can no longer see each other's workouts.
+      const shared = challenges.filter(
+        (c) => c.members.includes(other) && !c.declined.includes(uid) && challengeState(c) !== 'finished'
+      )
+      // Tell them first: the notification rule needs the friendship to still exist.
+      for (const c of shared) {
+        if (c.accepted.includes(uid)) {
+          await notify(other, 'challenge_left', c.id, { text: `${c.title} · you’re no longer friends` }).catch((err) =>
+            console.warn('notification failed', err)
+          )
+        }
+      }
       const batch = writeBatch(db)
       batch.delete(doc(db, 'users', uid, 'friends', other))
       batch.delete(doc(db, 'users', other, 'friends', uid))
+      for (const c of shared) batch.update(doc(db, 'challenges', c.id), { declined: arrayUnion(uid) })
       await batch.commit()
     },
-    [needUid]
+    [needUid, challenges, notify]
   )
 
   const nudge = useCallback(
@@ -662,6 +679,15 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [needUid]
   )
 
+  const leaveChallenge = useCallback(
+    async (c: Challenge) => {
+      const uid = needUid()
+      await updateDoc(doc(db, 'challenges', c.id), { declined: arrayUnion(uid) })
+      for (const m of c.accepted) if (m !== uid) notifyQuietly(m, 'challenge_left', c.id, { text: c.title })
+    },
+    [needUid, notifyQuietly]
+  )
+
   const deleteChallenge = useCallback(async (c: Challenge) => {
     await deleteDoc(doc(db, 'challenges', c.id))
   }, [])
@@ -735,6 +761,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       createChallenge,
       joinChallenge,
       declineChallenge,
+      leaveChallenge,
       deleteChallenge,
       postScore,
       markRead,
@@ -767,6 +794,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       createChallenge,
       joinChallenge,
       declineChallenge,
+      leaveChallenge,
       deleteChallenge,
       postScore,
       markRead,

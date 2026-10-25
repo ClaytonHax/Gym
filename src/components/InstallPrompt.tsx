@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
 import { Icon } from './Icon'
 import { Button, IconButton, Sheet } from './ui'
+import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import {
@@ -20,7 +20,18 @@ interface BeforeInstallPromptEvent extends Event {
 
 const INSTALL_SNOOZE = 'gym.installSnoozedUntil'
 const PUSH_SNOOZE = 'gym.pushSnoozedUntil'
-const SNOOZE_DAYS = 3
+const SNOOZE_DAYS = 14
+
+// The browser fires this once, early, so catch it at module load and share it with the Home banner.
+let deferredInstall: BeforeInstallPromptEvent | null = null
+const installListeners = new Set<() => void>()
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault()
+    deferredInstall = e as BeforeInstallPromptEvent
+    installListeners.forEach((fn) => fn())
+  })
+}
 
 function snoozed(key: string): boolean {
   try {
@@ -222,14 +233,14 @@ function Banner({
   dismissLabel: string
 }) {
   return (
-    <div className="kb-hide fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 px-4">
-      <div className="animate-rise mx-auto flex max-w-2xl items-center gap-3 rounded-2xl border border-brand-500/40 bg-[var(--color-surface)] p-3 shadow-2xl shadow-ink-950/40">
+    <div>
+      <div className="animate-rise flex items-center gap-3 rounded-2xl border border-brand-500/40 bg-[var(--color-surface)] p-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-500/15 text-brand-400">
           <Icon name={icon} size={20} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">{title}</p>
-          <p className="text-xs text-[var(--color-fg-muted)]">{text}</p>
+          <p className="text-sm text-[var(--color-fg-muted)]">{text}</p>
         </div>
         {action}
         <IconButton icon="x" label={dismissLabel} onClick={onDismiss} />
@@ -238,16 +249,22 @@ function Banner({
   )
 }
 
-/**
- * Add-to-home-screen + notifications nudges. Chrome/Android gets the native
- * install prompt; iPhone gets an illustrated Share → Add to Home Screen guide.
- * Once installed (or on desktop), it asks to turn notifications on.
- */
+/** Still mounted by AppShell; the banners now live on Home only (see HomeInstallBanner). */
 export function InstallPrompt() {
+  return null
+}
+
+/**
+ * Add-to-home-screen + notifications nudge, rendered in the page flow on Home only.
+ * Chrome/Android gets the native install prompt; iPhone gets an illustrated Share ->
+ * Add to Home Screen guide. Once installed (or on desktop) it offers notifications.
+ * Dismissing hides it for 14 days; it never shows during a workout.
+ */
+export function HomeInstallBanner() {
   const { user } = useAuth()
   const toast = useToast()
-  const { pathname } = useLocation()
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
+  const { active } = useActiveWorkout()
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(deferredInstall)
   const [showIos, setShowIos] = useState(false)
   const [iosGuide, setIosGuide] = useState(false)
   const [askPush, setAskPush] = useState(false)
@@ -255,15 +272,12 @@ export function InstallPrompt() {
 
   useEffect(() => {
     if (isStandalone() || snoozed(INSTALL_SNOOZE)) return
-    const onPrompt = (e: Event) => {
-      e.preventDefault()
-      setDeferred(e as BeforeInstallPromptEvent)
-    }
-    window.addEventListener('beforeinstallprompt', onPrompt)
-    // Delay so it doesn't land on top of the first paint.
-    const timer = isIos() ? window.setTimeout(() => setShowIos(true), 4000) : undefined
+    const sync = () => setDeferred(deferredInstall)
+    installListeners.add(sync)
+    sync()
+    const timer = isIos() ? window.setTimeout(() => setShowIos(true), 2000) : undefined
     return () => {
-      window.removeEventListener('beforeinstallprompt', onPrompt)
+      installListeners.delete(sync)
       if (timer) window.clearTimeout(timer)
     }
   }, [])
@@ -276,18 +290,16 @@ export function InstallPrompt() {
       currentSubscription()
         .then((sub) => !cancelled && !sub && setAskPush(true))
         .catch(() => {})
-    }, 5000)
+    }, 2000)
     return () => {
       cancelled = true
       window.clearTimeout(timer)
     }
   }, [])
 
-  // Keep banners off the live workout screen.
-  if (pathname === '/workout') return null
-
   const dismissInstall = () => {
     snooze(INSTALL_SNOOZE)
+    deferredInstall = null
     setDeferred(null)
     setShowIos(false)
   }
@@ -317,26 +329,28 @@ export function InstallPrompt() {
     }
   }
 
+  if (active) return null
+
   return (
     <>
       {deferred || showIos ? (
         <Banner
           icon="download"
           title="Add Gym to your Home Screen"
-          text={deferred ? 'Full-screen, offline, with notifications.' : 'Full-screen, offline, and needed for notifications on iPhone.'}
+          text={deferred ? 'Opens full screen like any other app, and works without internet.' : 'Opens full screen like any other app. On iPhone you need this to get alerts.'}
           dismissLabel="Dismiss install prompt"
           onDismiss={dismissInstall}
           action={
             <Button size="sm" onClick={deferred ? install : () => setIosGuide(true)}>
-              {deferred ? 'Install' : 'How'}
+              {deferred ? 'Install' : 'Show me how'}
             </Button>
           }
         />
       ) : askPush ? (
         <Banner
           icon="bell"
-          title="Turn on notifications?"
-          text="Hear about nudges, friend requests and challenges."
+          title="Get alerts on your phone?"
+          text="We'll tell you when a friend nudges you or invites you to a challenge."
           dismissLabel="Not now"
           onDismiss={() => {
             snooze(PUSH_SNOOZE)

@@ -8,7 +8,7 @@ import { MUSCLE_COLORS } from '../data/exercises'
 import { usePlans } from '../hooks/usePlans'
 import { usePublicPlanActions } from '../hooks/usePublicPlans'
 import { addDays, dayKey, fmtDuration, parseDayKey } from '../lib/date'
-import { estimateMinutes, exerciseTargetLabel, planSummary, setCountOf } from '../lib/plans'
+import { daySummary, exerciseTargetLabel, planSummary, setCountOf } from '../lib/plans'
 import { avgSessionMinutes, matchesDeletePhrase, DELETE_PHRASE, startDateFor } from '../lib/planUiLogic'
 import type { DayKey, Plan, PlanDay } from '../types'
 
@@ -26,9 +26,9 @@ export function PlanStats({ days, className = '' }: { days: PlanDay[]; className
   const avgMin = avgSessionMinutes(days)
   const sets = sessions.reduce((t, d) => t + setCountOf(d.exercises), 0)
   const items: Array<[string, string]> = [
-    [`${length}`, 'day cycle'],
-    [`${workouts}`, 'workouts'],
-    [`${rests}`, 'rest'],
+    [`${length}`, length === 1 ? 'day rotation' : 'days in rotation'],
+    [`${workouts}`, workouts === 1 ? 'workout' : 'workouts'],
+    [`${rests}`, rests === 1 ? 'rest day' : 'rest days'],
     [avgMin ? `~${avgMin}` : '—', 'min / session'],
     [`${sets}`, 'sets'],
   ]
@@ -81,8 +81,7 @@ function DayRow({ day, index, defaultOpen }: { day: PlanDay; index: number; defa
           <span className="block truncate font-display text-xl font-semibold">{day.name}</span>
           <span className="tabular block truncate text-xs text-[var(--color-fg-muted)]">
             {day.focus ? `${day.focus} · ` : ''}
-            {day.exercises.length} exercises · {setCountOf(day.exercises)} sets · ~
-            {fmtDuration(estimateMinutes(day.exercises) * 60)}
+            {daySummary(day.exercises)}
           </span>
         </span>
         <Icon
@@ -125,7 +124,7 @@ function DayRow({ day, index, defaultOpen }: { day: PlanDay; index: number; defa
 export function DayAccordion({ days }: { days: PlanDay[] }) {
   const first = days.findIndex((d) => d.kind === 'workout')
   return (
-    <ol className="flex flex-col gap-2" aria-label="Days in the cycle">
+    <ol className="flex flex-col gap-2" aria-label="Days in your rotation">
       {days.map((d, i) => (
         <DayRow key={d.id} day={d} index={i} defaultOpen={i === first} />
       ))}
@@ -194,7 +193,7 @@ function SwitchInner({ plan, onClose }: { plan: Plan | null; onClose: () => void
       title={plan ? `Start ${plan.name}` : 'Start plan'}
       footer={
         <Button full variant="go" size="lg" icon="check" loading={busy} disabled={!chosen} onClick={() => void start()}>
-          {switching ? 'Switch to this plan' : 'Start plan'}
+          {switching ? 'Switch to this plan' : plan ? `Start ${plan.name}` : 'Start plan'}
         </Button>
       }
     >
@@ -250,7 +249,7 @@ function SwitchInner({ plan, onClose }: { plan: Plan | null; onClose: () => void
           {chosen && day ? (
             <p className="text-sm text-[var(--color-fg-muted)]" aria-live="polite">
               {fmtLong(chosen)} is {day.kind === 'rest' ? 'a rest day' : day.name}
-              {dayIndex > 0 ? `, so day 1 was ${fmtLong(startDateFor(chosen, dayIndex))}` : ''}.
+              {dayIndex > 0 ? `, so the plan counts as started on ${fmtLong(startDateFor(chosen, dayIndex))}` : ''}.
             </p>
           ) : null}
         </section>
@@ -265,7 +264,7 @@ function SwitchInner({ plan, onClose }: { plan: Plan | null; onClose: () => void
   )
 }
 
-/** "Start <plan>": pick when it begins and which day of the cycle to open on. */
+/** "Start <plan>": pick when it begins and which day of the rotation to open on. */
 export function SwitchPlanSheet({ plan, onClose }: { plan: Plan | null; onClose: () => void }) {
   // Re-keyed per plan so a reopened sheet always starts from today / day 1.
   return <SwitchInner key={plan?.id ?? 'none'} plan={plan} onClose={onClose} />

@@ -3,6 +3,7 @@ import { AppShell } from './components/AppShell'
 import { Spinner } from './components/ui'
 import { UpdatePrompt } from './components/UpdatePrompt'
 import { Icon } from './components/Icon'
+import { ActiveWorkoutProvider } from './contexts/ActiveWorkoutContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { SocialProvider } from './contexts/SocialContext'
@@ -81,6 +82,7 @@ function Gate() {
 
   return (
     <SocialProvider>
+    <ActiveWorkoutProvider>
     <Routes>
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
@@ -105,6 +107,7 @@ function Gate() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </ActiveWorkoutProvider>
     </SocialProvider>
   )
 }

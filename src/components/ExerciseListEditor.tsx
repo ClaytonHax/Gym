@@ -8,7 +8,7 @@ import { fmtTargetDuration, isTimed } from '../lib/logMode'
 import type { Exercise, LogMode, PlanExercise } from '../types'
 
 const REST_OPTIONS = [30, 60, 90, 120, 150, 180, 240, 300]
-const TIME_OPTIONS = [300, 600, 900, 1200, 1800, 2700, 3600]
+const TIME_OPTIONS = [300, 600, 900, 1200, 1500, 1800, 2700, 3600]
 
 function restLabel(sec: number): string {
   return sec < 60 ? `${sec}s` : `${sec / 60} min`
@@ -36,6 +36,7 @@ function fromExercise(e: Exercise): PlanExercise {
     muscle: e.muscle,
     tracksWeight: e.tracksWeight,
     ...(timed ? { logBy: 'time' as const, targetDurationSec: 600 } : {}),
+    ...(e.cardioFields?.length ? { cardioFields: e.cardioFields } : {}),
     targets: timed ? [] : ['10-15', '10-15', '10-15'],
     restSec: 120,
   }
@@ -126,14 +127,14 @@ export function ExerciseListEditor({
               {isTimed(it) ? (
                 <div className="min-w-0">
                   <label>
-                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
-                      Target time
+                    <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                      Goal (minutes)
                     </span>
                     <select
                       value={it.targetDurationSec ?? 600}
                       onChange={(e) => patchItem(i, { targetDurationSec: Number(e.target.value) })}
-                      aria-label={`Target time for ${it.name}`}
-                      className="min-h-10 rounded-lg border border-transparent bg-[var(--color-surface)] px-2 font-semibold outline-none focus:border-brand-500"
+                      aria-label={`Goal minutes for ${it.name}`}
+                      className="min-h-11 rounded-lg border border-transparent bg-[var(--color-surface)] px-2 font-semibold outline-none focus:border-brand-500"
                     >
                       {[...new Set([...TIME_OPTIONS, it.targetDurationSec ?? 600])]
                         .sort((a, b) => a - b)
@@ -144,12 +145,12 @@ export function ExerciseListEditor({
                         ))}
                     </select>
                   </label>
-                  <p className="mt-1 text-xs text-[var(--color-fg-muted)]">Sets: as many as you need</p>
+                  <p className="mt-1 text-xs text-[var(--color-fg-muted)]">One timed block. Add more rounds while you train.</p>
                 </div>
               ) : (
                 <>
               <div>
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
                   Sets
                 </span>
                 <div className="flex items-center gap-1">
@@ -160,7 +161,7 @@ export function ExerciseListEditor({
                     onClick={() =>
                       patchItem(i, { targets: spread(it.targets, it.targets.length - 1) })
                     }
-                    className="grid size-10 place-items-center rounded-lg bg-[var(--color-surface)] disabled:opacity-30"
+                    className="grid size-11 place-items-center rounded-lg bg-[var(--color-surface)] disabled:opacity-30"
                   >
                     <Icon name="minus" size={16} />
                   </button>
@@ -172,7 +173,7 @@ export function ExerciseListEditor({
                     onClick={() =>
                       patchItem(i, { targets: spread(it.targets, it.targets.length + 1) })
                     }
-                    className="grid size-10 place-items-center rounded-lg bg-[var(--color-surface)] disabled:opacity-30"
+                    className="grid size-11 place-items-center rounded-lg bg-[var(--color-surface)] disabled:opacity-30"
                   >
                     <Icon name="plus" size={16} />
                   </button>
@@ -180,7 +181,7 @@ export function ExerciseListEditor({
               </div>
 
               <label className="min-w-0">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
                   Reps
                 </span>
                 <input
@@ -199,14 +200,14 @@ export function ExerciseListEditor({
               )}
 
               <label>
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
                   Rest
                 </span>
                 <select
                   value={it.restSec ?? 120}
                   onChange={(e) => patchItem(i, { restSec: Number(e.target.value) })}
                   aria-label={`Rest after ${it.name}`}
-                  className="min-h-10 rounded-lg border border-transparent bg-[var(--color-surface)] px-2 font-semibold outline-none focus:border-brand-500"
+                  className="min-h-11 rounded-lg border border-transparent bg-[var(--color-surface)] px-2 font-semibold outline-none focus:border-brand-500"
                 >
                   {[...new Set([...REST_OPTIONS, it.restSec ?? 120])]
                     .sort((a, b) => a - b)
@@ -226,8 +227,8 @@ export function ExerciseListEditor({
         Add exercises
       </Button>
       <p className="text-xs text-[var(--color-fg-muted)]">
-        Reps accepts a range like 8-12, “failure”, or a list like “5-9, 10-15” to give each set its
-        own target.
+        Reps: type a range such as 8-12, or the word “failure” (keep going until you can't do
+        another). For different goals per set, separate them with commas: 5-9, 10-15.
       </p>
 
       {/* Portalled so the picker's fixed overlay isn't trapped inside a transformed sheet. */}

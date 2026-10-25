@@ -21,6 +21,7 @@ function rx(exerciseId: string, count: number | string[], range: string, restSec
     name: base.name,
     muscle: base.muscle,
     tracksWeight: base.tracksWeight,
+    ...(base.cardioFields?.length ? { cardioFields: base.cardioFields } : {}),
     targets: Array.isArray(count) ? count : Array.from({ length: count }, () => range),
     restSec,
   }
@@ -33,6 +34,23 @@ const ABS = (): PlanExercise[] => [
 ]
 
 const SPLIT = ['5-9', '10-15']
+
+/** A timed cardio block: one open-ended set with a minutes goal. */
+function cardio(exerciseId: string, minutes: number): PlanExercise {
+  const base = BY_ID.get(exerciseId)
+  if (!base) throw new Error(`Unknown exercise in program: ${exerciseId}`)
+  return {
+    exerciseId,
+    name: base.name,
+    muscle: base.muscle,
+    tracksWeight: base.tracksWeight,
+    logBy: 'time',
+    targetDurationSec: minutes * MIN,
+    ...(base.cardioFields?.length ? { cardioFields: base.cardioFields } : {}),
+    targets: [],
+    restSec: 60,
+  }
+}
 
 function day(id: string, name: string, focus: string, exercises: PlanExercise[]): PlanDay {
   return { id, kind: 'workout', name, focus, exercises }
@@ -112,7 +130,19 @@ const PPL_DAYS: PlanDay[] = [
   rest('ppl-rest-2'),
 ]
 
+/** 3 easy cardio days a week with a rest day between: a gentle start for weight loss. */
+const CARDIO_DAYS: PlanDay[] = [
+  day('cardio-1', 'Cardio 1', 'Walk and bike', [cardio('incline-walk', 20), cardio('cycling', 15)]),
+  rest('cardio-rest-1'),
+  day('cardio-2', 'Cardio 2', 'Row and cross-train', [cardio('rowing', 10), cardio('elliptical', 10), cardio('treadmill', 10)]),
+  rest('cardio-rest-2'),
+  day('cardio-3', 'Cardio 3', 'Walk and climb', [cardio('treadmill', 20), cardio('stair-climber', 10)]),
+  rest('cardio-rest-3'),
+  rest('cardio-rest-4'),
+]
+
 export const PPL_TEMPLATE_ID = 'ppl-8'
+export const CARDIO_TEMPLATE_ID = 'cardio-weight-loss'
 
 /** The built-in PPL plan lives in the public library under this id, authored by the owner. */
 export const PPL_PUBLIC_ID = 'ppl-8day'
@@ -126,6 +156,13 @@ export const PLAN_TEMPLATES: PlanTemplate[] = [
     description: 'Two rounds of push, pull and legs, each followed by a rest day.',
     tagline: '8-day cycle · 6 workouts · 2 rest',
     days: PPL_DAYS,
+  },
+  {
+    id: CARDIO_TEMPLATE_ID,
+    name: 'Cardio & weight loss',
+    description: 'Three easy cardio days a week with rest days between. No gym experience needed.',
+    tagline: '7-day rotation · 3 workouts · 4 rest days',
+    days: CARDIO_DAYS,
   },
 ]
 
@@ -144,6 +181,7 @@ export function planToExercises(plan: PlanExercise[]): WorkoutExercise[] {
         muscle: p.muscle,
         tracksWeight: p.tracksWeight,
         logBy: 'time' as const,
+        ...(p.cardioFields?.length ? { cardioFields: p.cardioFields } : {}),
         ...(p.targetDurationSec ? { targetDurationSec: p.targetDurationSec } : {}),
         ...(p.restSec ? { restSec: p.restSec } : {}),
         ...(p.supersetId ? { supersetId: p.supersetId } : {}),

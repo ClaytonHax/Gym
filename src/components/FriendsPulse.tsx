@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Icon } from './Icon'
-import { Card, IconButton } from './ui'
+import { Button, Card } from './ui'
 import { Avatar, displayOf, NudgeSheet } from './social'
 import { useMyPublicStats } from './SocialSync'
 import { useAuth } from '../contexts/AuthContext'
 import { useSocial } from '../contexts/SocialContext'
-import { challengeState, daysSince, friendAtRisk, liveStreak, metricValue, type PublicProfile } from '../lib/social'
+import { challengeState, daysSince, friendAtRisk, liveStreak, metricValue, rankLabel, rankWithTies, type PublicProfile } from '../lib/social'
 
 /** Home-screen slice of the friends system: this week's race + who needs a nudge. */
 export function FriendsPulse() {
@@ -47,7 +47,9 @@ export function FriendsPulse() {
     )
   }
 
-  const myRank = ranked.findIndex((r) => r.isMe) + 1
+  const ranks = rankWithTies(ranked.map((r) => r.value))
+  const myIdx = ranked.findIndex((r) => r.isMe)
+  const myRank = ranks[myIdx]
   const atRisk = friends.find((f) => f.profile && friendAtRisk(f.stats))
   const idle = friends.find((f) => (daysSince(f.stats?.lastWorkoutAt) ?? 99) >= 3 && f.profile)
   const live = challenges.filter((c) => c.accepted.includes(uid) && challengeState(c) === 'active').length
@@ -61,7 +63,7 @@ export function FriendsPulse() {
         </Link>
       </div>
       <p className="mb-3 font-display text-3xl font-bold leading-none">
-        #{myRank}
+        {myRank.tied ? 'T' : '#'}{myRank.rank}
         <span className="ml-1.5 text-base text-[var(--color-fg-muted)]">of {ranked.length} in workouts</span>
       </p>
       <ol className="flex flex-col gap-1.5">
@@ -69,7 +71,7 @@ export function FriendsPulse() {
           const { name } = displayOf(r.profile)
           return (
             <li key={r.uid} className={`flex items-center gap-3 rounded-xl px-2 py-1.5 ${r.isMe ? 'bg-brand-500/10' : ''}`}>
-              <span className="tabular w-4 text-center text-sm font-bold text-[var(--color-fg-muted)]">{i + 1}</span>
+              <span className="tabular w-6 text-center text-sm font-bold text-[var(--color-fg-muted)]">{rankLabel(ranks[i])}</span>
               <Avatar uid={r.uid} name={r.isMe ? 'You' : name} size={30} />
               <span className="min-w-0 flex-1 truncate text-sm font-semibold">{r.isMe ? 'You' : name}</span>
               <span className="tabular font-display text-lg font-bold">{r.value}</span>
@@ -83,28 +85,34 @@ export function FriendsPulse() {
             <>
               <Icon name="flame" size={18} className="shrink-0 text-brand-400" />
               <p className="min-w-0 flex-1 text-sm text-[var(--color-fg-muted)]">
-                <span className="font-semibold text-[var(--color-fg)]">@{atRisk.profile.username}</span>’s{' '}
+                <span className="font-semibold text-[var(--color-fg)]">{displayOf(atRisk.profile).name}</span>’s{' '}
                 {liveStreak(atRisk.stats)}-{atRisk.stats?.streak.unit ?? 'day'} streak ends tonight.
               </p>
-              <IconButton
-                icon="hand"
-                label={`Nudge @${atRisk.profile.username}`}
+              <Button
+                size="sm"
                 variant="secondary"
+                icon="hand"
+                aria-label={`Nudge ${displayOf(atRisk.profile).name}`}
                 onClick={() => setNudging(atRisk.profile!)}
-              />
+              >
+                Nudge
+              </Button>
             </>
           ) : idle?.profile ? (
             <>
               <p className="min-w-0 flex-1 text-sm text-[var(--color-fg-muted)]">
-                <span className="font-semibold text-[var(--color-fg)]">@{idle.profile.username}</span> hasn’t trained in{' '}
+                <span className="font-semibold text-[var(--color-fg)]">{displayOf(idle.profile).name}</span> hasn’t trained in{' '}
                 {daysSince(idle.stats?.lastWorkoutAt) ?? 'a few'} days.
               </p>
-              <IconButton
-                icon="hand"
-                label={`Nudge @${idle.profile.username}`}
+              <Button
+                size="sm"
                 variant="secondary"
+                icon="hand"
+                aria-label={`Nudge ${displayOf(idle.profile).name}`}
                 onClick={() => setNudging(idle.profile!)}
-              />
+              >
+                Nudge
+              </Button>
             </>
           ) : (
             <Link to="/friends?tab=challenges" className="flex min-h-11 flex-1 items-center gap-2 text-sm font-semibold text-brand-400">

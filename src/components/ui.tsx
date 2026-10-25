@@ -274,7 +274,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
           {error}
         </p>
       ) : hint ? (
-        <p id={`${inputId}-hint`} className="text-xs text-[var(--color-fg-muted)]">
+        <p id={`${inputId}-hint`} className="text-sm text-[var(--color-fg-muted)]">
           {hint}
         </p>
       ) : null}

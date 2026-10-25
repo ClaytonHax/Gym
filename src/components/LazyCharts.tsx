@@ -12,6 +12,9 @@ const BodyWeightChartImpl = lazy(() =>
   Charts().then((m) => ({ default: m.BodyWeightChart }))
 )
 const VolumeChartImpl = lazy(() => Charts().then((m) => ({ default: m.VolumeChart })))
+const WeeklyBarChartImpl = lazy(() =>
+  Charts().then((m) => ({ default: m.WeeklyBarChart }))
+)
 const ExerciseProgressChartImpl = lazy(() =>
   Charts().then((m) => ({ default: m.ExerciseProgressChart }))
 )
@@ -38,6 +41,10 @@ export const BodyWeightChart = withFallback<ComponentProps<typeof BodyWeightChar
 )
 export const VolumeChart = withFallback<ComponentProps<typeof VolumeChartImpl>>(
   VolumeChartImpl,
+  190
+)
+export const WeeklyBarChart = withFallback<ComponentProps<typeof WeeklyBarChartImpl>>(
+  WeeklyBarChartImpl,
   190
 )
 export const ExerciseProgressChart = withFallback<

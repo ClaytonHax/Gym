@@ -58,3 +58,8 @@ export function fmtPace(durationSec: number, km: number, unit: Unit): string | n
   const per = Math.round(durationSec / d)
   return `${Math.floor(per / 60)}:${String(per % 60).padStart(2, '0')} /${distanceUnit(unit)}`
 }
+
+/** "1 set", "2 sets" — pass `many` for irregular plurals. */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`
+}

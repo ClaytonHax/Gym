@@ -84,8 +84,8 @@ export function ActivityHeatmap({
   return (
     <div className={className}>
       <p className="sr-only">
-        {total} workouts across {activeDays} days in the last {weeks} weeks. Select a day for
-        details.
+        {total} {total === 1 ? 'workout' : 'workouts'} across {activeDays}{' '}
+        {activeDays === 1 ? 'day' : 'days'} in the last {weeks} weeks. Select a day for details.
       </p>
 
       <div className="flex gap-1.5">

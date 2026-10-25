@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from '../components/Icon'
-import { Button, EmptyState, IconButton, PageTitle } from '../components/ui'
+import { Button, EmptyState, PageTitle } from '../components/ui'
 import { Avatar } from '../components/social'
 import { PushToggleCard } from '../components/PushSettings'
 import { useProfiles, useSocial } from '../contexts/SocialContext'
 import { dayKey } from '../lib/date'
-import { describeNotification, timeAgo, type AppNotification, type NotificationType } from '../lib/social'
+import { describeNotification, timeAgo, type AppNotification, type NotificationType, type PublicProfile } from '../lib/social'
 
 const TYPE_ICON: Record<NotificationType, { icon: IconName; tone: string }> = {
   friend_request: { icon: 'user-plus', tone: 'bg-sky-500 text-ink-950' },
@@ -16,6 +16,7 @@ const TYPE_ICON: Record<NotificationType, { icon: IconName; tone: string }> = {
   workout: { icon: 'dumbbell', tone: 'bg-violet-400 text-ink-950' },
   challenge_invite: { icon: 'swords', tone: 'bg-amber-400 text-ink-950' },
   challenge_join: { icon: 'swords', tone: 'bg-go-500 text-ink-950' },
+  challenge_left: { icon: 'swords', tone: 'bg-rest text-ink-950' },
   streak_risk: { icon: 'flame', tone: 'bg-brand-500 text-ink-950' },
   streak_lost: { icon: 'flame', tone: 'bg-rest text-ink-950' },
   friend_streak: { icon: 'flame', tone: 'bg-brand-500 text-ink-950' },
@@ -23,15 +24,15 @@ const TYPE_ICON: Record<NotificationType, { icon: IconName; tone: string }> = {
 
 function Row({
   n,
-  username,
+  sender,
   onOpen,
 }: {
   n: AppNotification
-  /** The sender's current handle; the stored one may predate a rename. */
-  username: string | undefined
+  /** The sender's current profile; the stored handle may predate a rename and has no name. */
+  sender: PublicProfile | undefined
   onOpen: (n: AppNotification) => void
 }) {
-  const d = describeNotification(n, username)
+  const d = describeNotification(n, sender)
   const t = TYPE_ICON[n.type] ?? TYPE_ICON.nudge
   return (
     <button
@@ -42,7 +43,7 @@ function Row({
       }`}
     >
       <span className="relative shrink-0">
-        <Avatar uid={n.type === 'friend_streak' && n.ref ? n.ref : n.from} name={username || n.fromUsername} size={44} />
+        <Avatar uid={n.type === 'friend_streak' && n.ref ? n.ref : n.from} name={sender?.displayName || sender?.username || n.fromUsername} size={44} />
         <span className={`absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full ring-2 ring-[var(--color-surface)] ${t.tone}`}>
           <Icon name={t.icon} size={13} />
         </span>
@@ -50,7 +51,10 @@ function Row({
       <span className="min-w-0 flex-1">
         <span className={`block text-[15px] leading-snug ${n.read ? '' : 'font-semibold'}`}>{d.title}</span>
         {d.body ? <span className="mt-0.5 block text-sm text-[var(--color-fg-muted)]">“{d.body}”</span> : null}
-        <span className="mt-1 block text-xs text-[var(--color-fg-muted)]">{timeAgo(n.createdAt)}</span>
+        <span className="mt-1 block text-xs text-[var(--color-fg-muted)]">
+          {sender?.displayName && d.handle ? `${d.handle} · ` : ''}
+          {timeAgo(n.createdAt)}
+        </span>
       </span>
       {!n.read ? (
         <span className="mt-2 size-2.5 shrink-0 rounded-full bg-brand-500">
@@ -63,7 +67,9 @@ function Row({
 
 export function Notifications() {
   const navigate = useNavigate()
-  const { notifications, unread, markRead } = useSocial()
+  const { notifications, markRead } = useSocial()
+  // Count straight from the list on screen so the header can never contradict it.
+  const unread = notifications.filter((n) => !n.read).length
   const opened = useRef(false)
   const profileOf = useProfiles(useMemo(() => notifications.map((n) => n.from), [notifications]))
 
@@ -88,15 +94,17 @@ export function Notifications() {
 
   function open(n: AppNotification) {
     if (!n.read) markRead([n.id]).catch(() => {})
-    navigate(describeNotification(n, profileOf(n.from)?.username).to)
+    navigate(describeNotification(n, profileOf(n.from)).to)
   }
 
   return (
     <div className="animate-rise flex flex-col gap-5">
       <div className="flex items-start gap-2">
-        <IconButton icon="chevron-left" label="Back" onClick={() => navigate(-1)} className="-ml-2 mt-1" />
+        <Button variant="ghost" size="sm" icon="chevron-left" onClick={() => navigate(-1)} className="-ml-2 mt-1">
+          Back
+        </Button>
         <div className="flex-1">
-          <PageTitle title="Notifications" subtitle={unread > 0 ? `${unread} unread` : 'You’re all caught up'} />
+          <PageTitle title="Notifications" subtitle={notifications.length === 0 ? 'Nothing here yet' : unread > 0 ? `${unread} unread` : 'You’re all caught up'} />
         </div>
         {unread > 0 ? (
           <Button size="sm" variant="ghost" icon="check" onClick={() => markRead()} className="mt-1">
@@ -122,7 +130,7 @@ export function Notifications() {
             <ul className="card flex flex-col p-1.5">
               {g.items.map((n) => (
                 <li key={n.id}>
-                  <Row n={n} username={profileOf(n.from)?.username} onOpen={open} />
+                  <Row n={n} sender={profileOf(n.from)} onOpen={open} />
                 </li>
               ))}
             </ul>

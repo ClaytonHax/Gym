@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { matchesDeletePhrase, partitionStarred, startDateFor } from './planUiLogic'
+import { matchesDeletePhrase, nextWorkoutLabel, nextWorkoutSlot, partitionStarred, startDateFor, whenLabel } from './planUiLogic'
+import type { ScheduleSlot } from '../types'
 
 describe('startDateFor', () => {
   it('day 1 starts on the chosen date', () => {
@@ -71,6 +72,36 @@ describe('infoLine', () => {
       { id: 'a', kind: 'workout', name: 'Push', exercises: [ex] },
       { id: 'b', kind: 'rest', name: 'Rest', exercises: [] },
     ] as never
-    expect(infoLine(days)).toBe('2-day cycle · 1 workouts · 1 rest · ~5 min')
+    expect(infoLine(days)).toBe('2-day rotation · 1 workout · 1 rest day · ~5 min')
+    expect(infoLine([days[0]])).toBe('1 workout · repeats every day · ~5 min')
+  })
+})
+
+describe('nextWorkoutSlot', () => {
+  const day = (name: string) => ({ id: name, kind: 'workout' as const, name, exercises: [] })
+  const slot = (date: string, isToday: boolean, name?: string): ScheduleSlot => ({
+    date,
+    cycleLength: 3,
+    isFuture: !isToday,
+    isToday,
+    dayIndex: 0,
+    day: name ? day(name) : { id: 'r', kind: 'rest', name: 'Rest', exercises: [] },
+    cycle: 1,
+    dayNumber: 1,
+    isRest: !name,
+  })
+  const slots = [slot('2026-10-25', true, 'Push 1'), slot('2026-10-26', false, 'Pull 1'), slot('2026-10-27', false)]
+
+  it('points at today when it is not done', () => {
+    expect(nextWorkoutSlot(slots, false)?.day?.name).toBe('Push 1')
+  })
+  it('looks from tomorrow once today is done', () => {
+    expect(nextWorkoutSlot(slots, true)?.day?.name).toBe('Pull 1')
+  })
+  it('labels Tomorrow and weekdays', () => {
+    const now = new Date(2026, 9, 25, 12)
+    expect(nextWorkoutLabel(slots[1], now)).toBe('Tomorrow: Pull 1')
+    expect(whenLabel('2026-10-25', now)).toBe('Today')
+    expect(whenLabel('2026-10-27', now)).toBe(new Date(2026, 9, 27).toLocaleDateString(undefined, { weekday: 'long' }))
   })
 })

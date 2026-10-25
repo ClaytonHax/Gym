@@ -14,11 +14,21 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useToast } from '../contexts/ToastContext'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
-import { MUSCLE_COLORS } from '../data/exercises'
+import { MUSCLE_COLORS, isDumbbellExercise } from '../data/exercises'
+import { useBodyLog } from '../hooks/useBodyLog'
+import { useExercises } from '../hooks/useExercises'
 import { fmtDateLong, fmtDuration, fmtTime } from '../lib/date'
-import { fmtDistance, fmtPace, fmtVolume, fmtWeight } from '../lib/units'
+import { fmtDistance, fmtPace, fmtVolume, fmtWeight, plural } from '../lib/units'
 import { fmtDuration as fmtClock, isTimed } from '../lib/logMode'
-import { bestSetOf, estimate1rm, personalRecords } from '../lib/stats'
+import {
+  bestSetOf,
+  caloriesOf,
+  cardioTotals,
+  estimate1rm,
+  fmtCardioSet,
+  isCardioOnly,
+  personalRecords,
+} from '../lib/stats'
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -29,6 +39,8 @@ export function SessionDetail() {
   const { workouts, loading, deleteWorkout } = useWorkouts()
   const { save: saveActive, active } = useActiveWorkout()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { latest } = useBodyLog()
+  const { byId } = useExercises()
 
   const workout = workouts.find((w) => w.id === id)
 
@@ -64,6 +76,10 @@ export function SessionDetail() {
       </div>
     )
   }
+
+  const cardioOnly = isCardioOnly(workout)
+  const cardio = cardioTotals(workout)
+  const kcal = caloriesOf(workout, latest?.weightKg)
 
   function repeatWorkout() {
     if (active) {
@@ -113,11 +129,15 @@ export function SessionDetail() {
       <dl className="grid grid-cols-3 gap-3">
         {[
           { label: 'Duration', value: fmtDuration(workout.durationSec), icon: 'clock' as const },
-          { label: 'Volume', value: fmtVolume(workout.totalVolumeKg, unit), icon: 'layers' as const },
-          { label: 'Sets', value: String(workout.setCount), icon: 'check' as const },
+          cardioOnly
+            ? { label: 'Cardio time', value: `${Math.round(cardio.sec / 60)} min`, icon: 'clock' as const }
+            : { label: 'Volume', value: fmtVolume(workout.totalVolumeKg, unit), icon: 'layers' as const },
+          cardioOnly && cardio.km > 0
+            ? { label: 'Distance', value: fmtDistance(cardio.km, unit), icon: 'trending' as const }
+            : { label: 'Sets', value: String(workout.setCount), icon: 'check' as const },
         ].map((item) => (
           <Card key={item.label} className="p-3 text-center">
-            <dt className="flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+            <dt className="flex items-center justify-center gap-1 text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
               <Icon name={item.icon} size={12} />
               {item.label}
             </dt>
@@ -125,6 +145,10 @@ export function SessionDetail() {
           </Card>
         ))}
       </dl>
+      <p className="-mt-2 text-sm text-[var(--color-fg-muted)]">
+        {plural(workout.setCount, 'set')} done
+        {kcal.kcal > 0 ? ` · ~${kcal.kcal.toLocaleString()} kcal (estimate${kcal.saved || latest ? '' : ', using a default body weight'})` : ''}
+      </p>
 
       <Button variant="secondary" size="lg" full icon="rotate" onClick={repeatWorkout}>
         Repeat this workout
@@ -137,6 +161,7 @@ export function SessionDetail() {
             const timed = isTimed(ex)
             const best = timed ? undefined : bestSetOf(ex)
             const isPr = !timed && prIds.has(ex.exerciseId)
+            const dumbbell = isDumbbellExercise(ex, (id) => byId.get(id)?.equipment)
             const doneSets = ex.sets.filter((x) => x.done && !x.warmup)
             const totalSec = doneSets.reduce((n, x) => n + (x.durationSec ?? 0), 0)
             const totalKm = doneSets.reduce((n, x) => n + (x.distanceKm ?? 0), 0)
@@ -157,18 +182,12 @@ export function SessionDetail() {
                   <>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                        <tr className="text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
                           <th scope="col" className="w-10 pb-1 text-left">
                             Set
                           </th>
                           <th scope="col" className="pb-1 text-right">
-                            Time
-                          </th>
-                          <th scope="col" className="pb-1 text-right">
-                            Distance
-                          </th>
-                          <th scope="col" className="pb-1 text-right">
-                            Pace
+                            Details
                           </th>
                         </tr>
                       </thead>
@@ -179,15 +198,12 @@ export function SessionDetail() {
                               {j + 1}
                             </th>
                             <td className="py-1.5 text-right font-medium">
-                              {set.durationSec ? fmtClock(set.durationSec) : '—'}
-                            </td>
-                            <td className="py-1.5 text-right font-medium">
-                              {set.distanceKm ? fmtDistance(set.distanceKm, unit) : '—'}
-                            </td>
-                            <td className="py-1.5 text-right text-[var(--color-fg-muted)]">
-                              {(set.durationSec && set.distanceKm
-                                ? fmtPace(set.durationSec, set.distanceKm, unit)
-                                : null) ?? '—'}
+                              {fmtCardioSet(set, unit, { clock: fmtClock, distance: fmtDistance })}
+                              {set.durationSec && set.distanceKm ? (
+                                <span className="block text-sm font-normal text-[var(--color-fg-muted)]">
+                                  {fmtPace(set.durationSec, set.distanceKm, unit)}
+                                </span>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -205,13 +221,13 @@ export function SessionDetail() {
                   <>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                    <tr className="text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
                       <th scope="col" className="w-10 pb-1 text-left">
                         Set
                       </th>
                       {ex.tracksWeight ? (
                         <th scope="col" className="pb-1 text-right">
-                          Weight
+                          {dumbbell ? 'Weight (each)' : 'Weight'}
                         </th>
                       ) : null}
                       <th scope="col" className="pb-1 text-right">
@@ -252,7 +268,7 @@ export function SessionDetail() {
 
                 {best && ex.tracksWeight ? (
                   <p className="tabular mt-2 text-xs text-[var(--color-fg-muted)]">
-                    Best set {fmtWeight(best.weightKg, unit)} × {best.reps} · est. 1RM{' '}
+                    Best set {fmtWeight(best.weightKg, unit)}{dumbbell ? ' per dumbbell' : ''} × {best.reps} · est. 1RM{' '}
                     <span className="font-semibold text-brand-400">
                       {fmtWeight(estimate1rm(best.weightKg, best.reps), unit)}
                     </span>

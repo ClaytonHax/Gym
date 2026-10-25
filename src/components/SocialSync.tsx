@@ -10,7 +10,7 @@ import { publishMyProofs } from '../hooks/useChallengeProofs'
 import { computeStreaks } from '../lib/streaks'
 import { addDays, dayKey } from '../lib/date'
 import { activityFor, buildPublicStats, challengeScore } from '../lib/social'
-import { fmtVolume } from '../lib/units'
+import { fmtDistance, fmtVolume } from '../lib/units'
 import { buildStreakWatch, evaluateWatch, localNow } from '../lib/streakWatch'
 
 /** Activity older than this is pruned from friends' feeds. */
@@ -104,7 +104,7 @@ export function SocialSync() {
         const map = new Map<string, string>()
         for (const d of snap.docs) {
           const a = d.data()
-          map.set(d.id, `${a.name}|${a.sets}|${a.volumeKg}|${a.prs}`)
+          map.set(d.id, `${a.name}|${a.sets}|${a.volumeKg}|${a.prs}|${a.durationSec}|${a.cardio ?? ''}|${a.distanceKm ?? ''}`)
         }
         activityIds.current = map
       },
@@ -123,7 +123,7 @@ export function SocialSync() {
 
       for (const w of recent) {
         const item = activityFor(w, workouts)
-        const fingerprint = `${item.name}|${item.sets}|${item.volumeKg}|${item.prs}`
+        const fingerprint = `${item.name}|${item.sets}|${item.volumeKg}|${item.prs}|${item.durationSec}|${item.cardio ?? ''}|${item.distanceKm ?? ''}`
         const prev = existing.get(w.id)
         if (prev === fingerprint) continue
         const ref = doc(db, 'users', uid, 'activity', w.id)
@@ -138,7 +138,11 @@ export function SocialSync() {
           if (Date.now() - finished < FRESH_MS) {
             const pr = item.prs > 0 ? ` · ${item.prs} PR${item.prs === 1 ? '' : 's'}` : ''
             notifyFriends('workout', w.id, {
-              text: `${item.name} · ${item.sets} sets · ${fmtVolume(item.volumeKg, profile.unit)}${pr}`,
+              text: `${item.name} · ${
+                item.cardio
+                  ? `${Math.max(1, Math.round(item.durationSec / 60))} min${item.distanceKm ? ` · ${fmtDistance(item.distanceKm, profile.unit)}` : ''}`
+                  : `${item.sets} sets · ${fmtVolume(item.volumeKg, profile.unit)}`
+              }${pr}`,
               ref: w.id,
             })
           }
@@ -198,7 +202,7 @@ export function SocialSync() {
     if (!uid || !ready) return
     const graceEnd = dayKey(addDays(new Date(), -7))
     for (const c of challenges) {
-      if (!c.accepted.includes(uid) || c.endDay < graceEnd) continue
+      if (!c.accepted.includes(uid) || c.declined.includes(uid) || c.endDay < graceEnd) continue
       let allowed: Set<string> | undefined
       if (c.verify === 'photo') {
         // Wait for the proofs so a slow load never posts a false zero.

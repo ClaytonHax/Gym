@@ -2,7 +2,7 @@ import { Icon } from './Icon'
 import type { LogMode } from '../types'
 
 const OPTIONS: Array<{ mode: LogMode; label: string; icon: 'dumbbell' | 'clock' }> = [
-  { mode: 'reps', label: 'Weight × Reps', icon: 'dumbbell' },
+  { mode: 'reps', label: 'Weight & reps', icon: 'dumbbell' },
   { mode: 'time', label: 'Time', icon: 'clock' },
 ]
 
@@ -39,7 +39,7 @@ export function LogModeToggle({
             onClick={() => !active && onChange(o.mode)}
             className={`flex cursor-pointer items-center justify-center gap-1.5 rounded-lg font-semibold
               transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-brand-500
-              ${size === 'sm' ? 'min-h-9 text-xs' : 'min-h-11 text-sm'}
+              ${size === 'sm' ? 'min-h-11 text-sm' : 'min-h-12 text-sm'}
               ${
                 active
                   ? 'bg-brand-500 text-ink-950 shadow-sm'

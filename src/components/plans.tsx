@@ -14,14 +14,13 @@ import { usePlanSync } from '../contexts/PlanSyncContext'
 import { hasExercise, pickOwnerPplPlan, samePlanContent, stripExercise, type SyncAction } from '../lib/planSync'
 import { clean } from '../hooks/usePlans'
 import { taglineOf, usePublicPlanActions, usedByCount, useRecommendedPlans } from '../hooks/usePublicPlans'
-import { estimateMinutes, exerciseTargetLabel, setCountOf } from '../lib/plans'
-import { fmtDuration } from '../lib/date'
+import { daySummary, exerciseTargetLabel } from '../lib/plans'
 import type { Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
 
 /** Workout days filled orange, rest days outlined — the same chips the template cards use. */
 export function DayChips({ days, className = '' }: { days: PlanDay[]; className?: string }) {
   return (
-    <ul className={`flex flex-wrap gap-1.5 ${className}`} aria-label="Cycle order">
+    <ul className={`flex flex-wrap gap-1.5 ${className}`} aria-label="Order of days">
       {days.map((d) => (
         <li
           key={d.id}
@@ -38,8 +37,8 @@ export function DayChips({ days, className = '' }: { days: PlanDay[]; className?
 
 /** "by @username", resolved live from the uid — usernames are never stored on plans. */
 export function ByLine({ uid }: { uid: string }) {
-  const { handle } = displayOf(useProfile(uid))
-  return <>{handle ? `by ${handle}` : 'by …'}</>
+  const { name } = displayOf(useProfile(uid))
+  return <>by {name}</>
 }
 
 /** Avatar + "by @username", linking to the author's profile. */
@@ -52,13 +51,18 @@ export function AuthorLink({ uid, label = 'by' }: { uid: string; label?: 'by' | 
       className="-ml-1 inline-flex min-h-11 min-w-0 items-center gap-2 rounded-xl px-1 text-sm font-semibold text-[var(--color-fg-muted)] transition-colors duration-200 hover:text-brand-400"
     >
       <Avatar uid={uid} name={name} size={24} />
-      <span className="truncate">{handle ? `${label} ${handle}` : `${label} …`}</span>
+      <span className="truncate">
+        {label} {name}
+        {handle && name !== handle.slice(1) ? <span className="font-normal opacity-80"> ({handle})</span> : null}
+      </span>
     </Link>
   )
 }
 
 function UsedBy({ plan }: { plan: Pick<PublicPlan, 'usedBy'> }) {
   const n = usedByCount(plan)
+  // "Used by 0" reads as a warning; only show the count once it means something.
+  if (n < 2) return null
   return (
     <span className="tabular flex shrink-0 items-center gap-1 text-xs text-[var(--color-fg-muted)]">
       <Icon name="users" size={14} />
@@ -197,8 +201,7 @@ export function PublicPlanSheet({ plan, onClose }: { plan: PublicPlan | null; on
                         <span className="block truncate font-display text-xl font-semibold">{d.name}</span>
                         <span className="tabular block truncate text-xs text-[var(--color-fg-muted)]">
                           {d.focus ? `${d.focus} · ` : ''}
-                          {d.exercises.length} exercises · {setCountOf(d.exercises)} sets · ~
-                          {fmtDuration(estimateMinutes(d.exercises) * 60)}
+                          {daySummary(d.exercises)}
                         </span>
                       </span>
                       <Icon
@@ -265,9 +268,9 @@ export function PublicPlanList({
 /** Followed-copy pill: green while it auto-updates, amber once it's the user's own, muted if the source is gone. */
 export function FollowPill({ plan, action }: { plan: Plan; action: SyncAction }) {
   const from = plan.sharedFrom
-  const { handle } = displayOf(useProfile(from?.authorUid))
+  const { name: authorName } = displayOf(useProfile(from?.authorUid))
   if (!from) return null
-  const who = handle || 'author'
+  const who = authorName || 'author'
   const base = 'mt-1 inline-flex max-w-full items-center gap-1 rounded-md px-2 py-0.5 text-xs font-semibold'
   if (action === 'orphaned') {
     return (
@@ -295,11 +298,11 @@ export function FollowPill({ plan, action }: { plan: Plan; action: SyncAction })
 
 /** Shown in the editor on an untouched followed copy, before the first change. */
 export function StopsUpdatesNotice({ authorUid }: { authorUid: string }) {
-  const { handle } = displayOf(useProfile(authorUid))
+  const { name: authorName } = displayOf(useProfile(authorUid))
   return (
     <p className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm font-semibold text-amber-400">
       <Icon name="rotate" size={16} className="mt-0.5 shrink-0" />
-      <span className="min-w-0">Editing will stop automatic updates from {handle || 'the author'}</span>
+      <span className="min-w-0">Editing will stop automatic updates from {authorName || 'the author'}</span>
     </p>
   )
 }
@@ -309,7 +312,7 @@ export function PlanUpdateCard({ plan }: { plan: Plan }) {
   const toast = useToast()
   const { accept, keep, sourceOf } = usePlanSync()
   const [busy, setBusy] = useState<'update' | 'keep' | null>(null)
-  const { handle } = displayOf(useProfile(plan.sharedFrom?.authorUid))
+  const { name: authorName } = displayOf(useProfile(plan.sharedFrom?.authorUid))
   const src = plan.sharedFrom ? sourceOf(plan.sharedFrom.publicPlanId) : undefined
 
   async function run(kind: 'update' | 'keep') {
@@ -331,7 +334,7 @@ export function PlanUpdateCard({ plan }: { plan: Plan }) {
         Author updated this plan
       </p>
       <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
-        {handle || 'The author'} changed {src ? `“${src.name}”` : 'it'}. Update replaces your copy with their version;
+        {authorName || 'The author'} changed {src ? `“${src.name}”` : 'it'}. Update replaces your copy with their version;
         Keep mine hides this.
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -430,7 +433,8 @@ export function StarterPlans({
   const [busy, setBusy] = useState<string | null>(null)
 
   const starred = data.slice(0, max)
-  const templates = fallback && starred.length === 0 ? PLAN_TEMPLATES : []
+  // Beginners get the cardio starter beside the recommended picks.
+  const templates = fallback && starred.length === 0 ? PLAN_TEMPLATES : PLAN_TEMPLATES.filter((t) => t.id !== PPL_TEMPLATE_ID)
   if (!loading && starred.length === 0 && templates.length === 0) return null
 
   async function start(id: string, name: string, go: () => Promise<unknown>) {
@@ -448,7 +452,9 @@ export function StarterPlans({
   const row = 'card-accent flex items-center gap-2 p-3'
   const text = 'min-h-11 min-w-0 flex-1 text-left'
   const [heroPlan, ...morePlans] = starred
-  const [heroTemplate, ...moreTemplates] = templates as Array<PlanTemplate | undefined>
+  const noLibrary = starred.length === 0
+  const heroTemplate: PlanTemplate | undefined = noLibrary ? templates[0] : undefined
+  const moreTemplates: PlanTemplate[] = noLibrary ? templates.slice(1) : templates
 
   return (
     <section aria-label={title ?? 'Recommended plans'} className="flex flex-col gap-3">
@@ -486,7 +492,7 @@ export function StarterPlans({
               {morePlans.map((p) => (
                 <li key={p.id} className={row}>
                   <button type="button" onClick={() => setOpen(p)} className={text} aria-label={`Preview ${p.name}`}>
-                    <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-400">
+                    <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-[0.14em] text-brand-400">
                       <Icon name="star" size={12} />
                       Recommended
                     </span>

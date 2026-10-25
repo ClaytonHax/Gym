@@ -1,11 +1,17 @@
 import { useMemo, useState } from 'react'
 import { Icon } from './Icon'
-import { LogModeToggle } from './LogModeToggle'
 import { Badge, Button, Field, Sheet } from './ui'
 import { useExercises } from '../hooks/useExercises'
 import { useToast } from '../contexts/ToastContext'
-import { MUSCLE_COLORS, MUSCLE_GROUPS } from '../data/exercises'
-import type { Exercise, LogMode, MuscleGroup } from '../types'
+import { MUSCLE_COLORS, MUSCLE_GROUPS, matchesExercise } from '../data/exercises'
+import type { CardioField, Exercise, LogMode, MuscleGroup } from '../types'
+
+const CARDIO_FIELD_OPTIONS: Array<{ field: CardioField; label: string }> = [
+  { field: 'speed', label: 'Speed' },
+  { field: 'incline', label: 'Incline' },
+  { field: 'level', label: 'Level (resistance)' },
+  { field: 'distance', label: 'Distance' },
+]
 
 /**
  * Searchable exercise library with a create-your-own fallback.
@@ -31,21 +37,45 @@ export function ExercisePicker({
   const [newMuscle, setNewMuscle] = useState<MuscleGroup>('Chest')
   const [newEquipment, setNewEquipment] = useState('Barbell')
   const [newTracksWeight, setNewTracksWeight] = useState(true)
-  const [newLogBy, setNewLogBy] = useState<LogMode>('reps')
+  /** null until the person answers "How do you track it?". */
+  const [newLogBy, setNewLogBy] = useState<LogMode | null>(null)
+  const [newFields, setNewFields] = useState<CardioField[]>([])
   const [saving, setSaving] = useState(false)
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return exercises.filter((e) => {
-      if (muscle !== 'All' && e.muscle !== muscle) return false
-      if (!q) return true
-      return (
-        e.name.toLowerCase().includes(q) ||
-        e.muscle.toLowerCase().includes(q) ||
-        (e.equipment ?? '').toLowerCase().includes(q)
-      )
-    })
-  }, [exercises, search, muscle])
+  const searching = search.trim() !== ''
+
+  // Typing searches every category, so a forgotten chip can't hide results.
+  const filtered = useMemo(
+    () =>
+      exercises.filter((e) => {
+        if (searching) return matchesExercise(e, search)
+        return muscle === 'All' || e.muscle === muscle
+      }),
+    [exercises, search, searching, muscle]
+  )
+
+  const selectedExercises = selected
+    .map((id) => exercises.find((e) => e.id === id))
+    .filter((e): e is Exercise => Boolean(e))
+
+  function toggle(id: string) {
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  }
+
+  function startCreating() {
+    setNewName(search.trim())
+    setNewLogBy(null)
+    setNewFields([])
+    setCreating(true)
+  }
+
+  function chooseTracking(mode: LogMode) {
+    setNewLogBy(mode)
+    setNewTracksWeight(mode !== 'time')
+    setNewMuscle(mode === 'time' ? 'Cardio' : 'Chest')
+    setNewEquipment(mode === 'time' ? '' : 'Barbell')
+    setNewFields([])
+  }
 
   function reset() {
     setSearch('')
@@ -53,7 +83,8 @@ export function ExercisePicker({
     setSelected([])
     setCreating(false)
     setNewName('')
-    setNewLogBy('reps')
+    setNewLogBy(null)
+    setNewFields([])
     setNewTracksWeight(true)
   }
 
@@ -74,7 +105,7 @@ export function ExercisePicker({
   async function createExercise(e: React.FormEvent) {
     e.preventDefault()
     const name = newName.trim()
-    if (!name) return
+    if (!name || !newLogBy) return
     setSaving(true)
     try {
       const id = await addExercise({
@@ -82,13 +113,19 @@ export function ExercisePicker({
         muscle: newMuscle,
         equipment: newEquipment.trim() || 'Other',
         tracksWeight: newLogBy === 'time' ? false : newTracksWeight,
-        ...(newLogBy === 'time' ? { logBy: 'time' as const } : {}),
+        ...(newLogBy === 'time'
+          ? {
+              logBy: 'time' as const,
+              ...(newFields.length > 0 ? { cardioFields: newFields } : {}),
+            }
+          : {}),
       })
       toast(`${name} added to your library.`)
       setSelected((prev) => [...prev, id])
       setCreating(false)
       setNewName('')
-      setNewLogBy('reps')
+      setNewLogBy(null)
+      setSearch('')
     } catch {
       toast('Could not save that exercise. Try again.', 'error')
     } finally {
@@ -100,7 +137,7 @@ export function ExercisePicker({
     <Sheet
       open={open}
       onClose={close}
-      title={creating ? 'New exercise' : 'Add exercises'}
+      title={creating ? 'Create your own exercise' : 'Add exercises'}
       size={creating ? 'auto' : 'full'}
       pinned={
         creating ? undefined : (
@@ -123,16 +160,32 @@ export function ExercisePicker({
             />
           </div>
 
+          {searching ? (
+            <p className="text-sm text-[var(--color-fg-muted)]">
+              Searching all categories.{' '}
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                className="min-h-11 font-semibold text-brand-400 underline underline-offset-2"
+              >
+                Clear search
+              </button>
+            </p>
+          ) : null}
+
           <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
             {(['All', ...MUSCLE_GROUPS] as Array<MuscleGroup | 'All'>).map((m) => (
               <button
                 key={m}
                 type="button"
-                onClick={() => setMuscle(m)}
-                aria-pressed={muscle === m}
-                className={`min-h-9 shrink-0 rounded-full border px-3 text-xs font-semibold
+                onClick={() => {
+                  setMuscle(m)
+                  setSearch('')
+                }}
+                aria-pressed={!searching && muscle === m}
+                className={`min-h-11 shrink-0 rounded-full border px-4 text-xs font-semibold
                   uppercase tracking-wider transition-colors duration-200 ${
-                    muscle === m
+                    !searching && muscle === m
                       ? 'border-brand-500 bg-brand-500 text-ink-950'
                       : 'border-[var(--color-line)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
                   }`}
@@ -146,21 +199,86 @@ export function ExercisePicker({
       }
       footer={
         creating ? undefined : (
-          <Button full size="lg" onClick={confirm} disabled={selected.length === 0}>
-            {selected.length === 0
-              ? 'Select exercises'
-              : `Add ${selected.length} exercise${selected.length > 1 ? 's' : ''}`}
-          </Button>
+          <div className="flex flex-col gap-2">
+            {selectedExercises.length > 0 ? (
+              <ul aria-label="Selected exercises" className="flex flex-wrap gap-1.5">
+                {selectedExercises.map((e) => (
+                  <li key={e.id}>
+                    <button
+                      type="button"
+                      onClick={() => toggle(e.id)}
+                      aria-label={`Remove ${e.name}`}
+                      className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-brand-500 bg-brand-500/10 pl-3.5 pr-2.5 text-sm font-medium"
+                    >
+                      <span className="truncate">{e.name}</span>
+                      <Icon name="x" size={14} className="shrink-0" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <Button full size="lg" onClick={confirm} disabled={selected.length === 0}>
+              {selected.length === 0
+                ? 'Pick at least one exercise'
+                : `Add ${selected.length} exercise${selected.length > 1 ? 's' : ''}`}
+            </Button>
+          </div>
         )
       }
     >
       {creating ? (
+        newLogBy === null ? (
+          <div className="flex flex-col gap-4">
+            <p className="text-base font-semibold">How do you track it?</p>
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                type="button"
+                onClick={() => chooseTracking('reps')}
+                className="flex min-h-20 items-center gap-3 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-4 text-left transition-colors duration-200 hover:border-brand-500"
+              >
+                <Icon name="dumbbell" size={26} className="shrink-0 text-brand-400" />
+                <span>
+                  <span className="block text-base font-semibold">Weight &amp; reps</span>
+                  <span className="block text-sm text-[var(--color-fg-muted)]">
+                    Lifting, push-ups, pull-ups
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseTracking('time')}
+                className="flex min-h-20 items-center gap-3 rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-4 text-left transition-colors duration-200 hover:border-brand-500"
+              >
+                <Icon name="clock" size={26} className="shrink-0 text-brand-400" />
+                <span>
+                  <span className="block text-base font-semibold">Time (cardio, planks)</span>
+                  <span className="block text-sm text-[var(--color-fg-muted)]">
+                    Walking, bike, rowing, holds
+                  </span>
+                </span>
+              </button>
+            </div>
+            <Button type="button" variant="secondary" full onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
         <form onSubmit={createExercise} className="flex flex-col gap-4">
+          <p className="text-sm text-[var(--color-fg-muted)]">
+            Tracked by: <span className="font-semibold text-[var(--color-fg)]">{newLogBy === 'time' ? 'Time' : 'Weight & reps'}</span>{' '}
+            <button
+              type="button"
+              onClick={() => setNewLogBy(null)}
+              className="min-h-11 px-1 font-semibold text-brand-400 underline underline-offset-2"
+            >
+              Change
+            </button>
+          </p>
           <Field
             label="Exercise name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="e.g. Trap Bar Deadlift"
+            placeholder={newLogBy === 'time' ? 'e.g. Hill Walk' : 'e.g. Trap Bar Deadlift'}
             required
           />
           <div className="flex flex-col gap-1.5">
@@ -183,38 +301,51 @@ export function ExercisePicker({
               ))}
             </select>
           </div>
-          <Field
-            label="Equipment"
-            value={newEquipment}
-            onChange={(e) => setNewEquipment(e.target.value)}
-            placeholder="Barbell, Dumbbell, Machine…"
-          />
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Logged by</span>
-            <LogModeToggle
-              value={newLogBy}
-              label="Logged by"
-              onChange={(m) => {
-                setNewLogBy(m)
-                setNewTracksWeight(m !== 'time')
-              }}
-            />
-          </div>
-          {newLogBy === 'time' ? null : (
-            <label className="flex items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-3">
-              <input
-                type="checkbox"
-                checked={newTracksWeight}
-                onChange={(e) => setNewTracksWeight(e.target.checked)}
-                className="size-5 accent-[var(--color-brand-500)]"
+          {newLogBy === 'time' ? (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1 text-sm font-medium">Also record (optional)</legend>
+              {CARDIO_FIELD_OPTIONS.map((o) => (
+                <label
+                  key={o.field}
+                  className="flex min-h-12 items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5"
+                >
+                  <input
+                    type="checkbox"
+                    checked={newFields.includes(o.field)}
+                    onChange={(e) =>
+                      setNewFields((prev) =>
+                        e.target.checked ? [...prev, o.field] : prev.filter((f) => f !== o.field)
+                      )
+                    }
+                    className="size-5 accent-[var(--color-brand-500)]"
+                  />
+                  <span className="text-sm">{o.label}</span>
+                </label>
+              ))}
+            </fieldset>
+          ) : (
+            <>
+              <Field
+                label="Equipment"
+                value={newEquipment}
+                onChange={(e) => setNewEquipment(e.target.value)}
+                placeholder="Barbell, Dumbbell, Machine…"
               />
-              <span className="text-sm">
-                Tracks weight
-                <span className="block text-xs text-[var(--color-fg-muted)]">
-                  Turn off for bodyweight or cardio work (reps only).
+              <label className="flex items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-3">
+                <input
+                  type="checkbox"
+                  checked={newTracksWeight}
+                  onChange={(e) => setNewTracksWeight(e.target.checked)}
+                  className="size-5 accent-[var(--color-brand-500)]"
+                />
+                <span className="text-sm">
+                  I use weights
+                  <span className="block text-xs text-[var(--color-fg-muted)]">
+                    Turn off for bodyweight moves like push-ups (reps only).
+                  </span>
                 </span>
-              </span>
-            </label>
+              </label>
+            </>
           )}
           <div className="flex gap-3">
             <Button type="button" variant="secondary" full onClick={() => setCreating(false)}>
@@ -225,12 +356,20 @@ export function ExercisePicker({
             </Button>
           </div>
         </form>
+        )
       ) : (
         <div className="flex flex-col gap-3">
           {filtered.length === 0 ? (
-            <p className="py-6 text-center text-sm text-[var(--color-fg-muted)]">
-              No exercises match “{search}”.
-            </p>
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <p className="text-sm text-[var(--color-fg-muted)]">
+                No exercises match “{search}”.
+              </p>
+              {searching ? (
+                <Button icon="plus" onClick={startCreating}>
+                  {`Create “${search.trim()}”`}
+                </Button>
+              ) : null}
+            </div>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {filtered.map((ex) => {
@@ -240,33 +379,34 @@ export function ExercisePicker({
                     <button
                       type="button"
                       aria-pressed={isSelected}
-                      onClick={() =>
-                        setSelected((prev) =>
-                          isSelected ? prev.filter((id) => id !== ex.id) : [...prev, ex.id]
-                        )
-                      }
-                      className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left
+                      onClick={() => toggle(ex.id)}
+                      className={`flex min-h-14 w-full items-center gap-3 rounded-xl border-2 p-3 text-left
                         transition-colors duration-200 ${
                           isSelected
-                            ? 'border-brand-500 bg-brand-500/10'
+                            ? 'border-brand-500 bg-brand-500/15'
                             : 'border-[var(--color-line)] hover:border-brand-500/50'
                         }`}
                     >
                       <span
-                        className={`grid size-6 shrink-0 place-items-center rounded-md border-2
-                          ${isSelected ? 'border-brand-500 bg-brand-500 text-ink-950' : 'border-[var(--color-line)]'}`}
+                        className={`grid size-7 shrink-0 place-items-center rounded-full border-2
+                          ${isSelected ? 'border-brand-500 bg-brand-500 text-ink-950' : 'border-[var(--color-fg-muted)]'}`}
                       >
-                        {isSelected ? <Icon name="check" size={14} /> : null}
+                        {isSelected ? <Icon name="check" size={16} /> : null}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{ex.name}</span>
-                        <span className="block text-xs text-[var(--color-fg-muted)]">
+                        <span className="block font-medium">{ex.name}</span>
+                        <span className="block text-sm text-[var(--color-fg-muted)]">
                           {ex.equipment}
                           {ex.custom ? ' · Custom' : ''}
                           {ex.logBy === 'time' ? ' · Timed' : !ex.tracksWeight ? ' · Reps only' : ''}
                         </span>
                       </span>
-                      <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
+                      <span className="flex shrink-0 flex-col items-end gap-1">
+                        <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
+                        {isSelected ? (
+                          <span className="text-sm font-semibold text-brand-400">Added</span>
+                        ) : null}
+                      </span>
                     </button>
                   </li>
                 )
@@ -274,8 +414,8 @@ export function ExercisePicker({
             </ul>
           )}
 
-          <Button variant="secondary" icon="plus" full onClick={() => setCreating(true)}>
-            Create custom exercise
+          <Button variant="secondary" icon="plus" full onClick={startCreating}>
+            {searching ? `Create “${search.trim()}”` : 'Create your own exercise'}
           </Button>
         </div>
       )}

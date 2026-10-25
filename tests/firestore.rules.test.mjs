@@ -149,6 +149,12 @@ await t('bob cannot change metric', () => assertFails(updateDoc(doc(B, `challeng
 await t('challenge_invite notification', () => assertSucceeds(setDoc(doc(A, `users/bob/notifications/challenge_invite_alice_${cid}`), {
   type: 'challenge_invite', from: 'alice', fromUsername: 'alice_x', read: false, createdAt: serverTimestamp(), text: 'x',
 })))
+await t('bob leaves the challenge (declines after joining)', () => assertSucceeds(updateDoc(doc(B, `challenges/${cid}`), { declined: arrayUnion('bob') })))
+await t('bob cannot remove alice from the challenge', () => assertFails(updateDoc(doc(B, `challenges/${cid}`), { declined: arrayUnion('alice') })))
+await t('bob cannot un-accept himself', () => assertFails(updateDoc(doc(B, `challenges/${cid}`), { accepted: [] })))
+await t('challenge_left notification', () => assertSucceeds(setDoc(doc(B, `users/alice/notifications/challenge_left_bob_${cid}`), {
+  type: 'challenge_left', from: 'bob', fromUsername: 'bob_x', read: false, createdAt: serverTimestamp(), text: 'x',
+})))
 await t('bob cannot delete alice challenge', () => assertFails(deleteDoc(doc(B, `challenges/${cid}`))))
 await t('alice deletes challenge', () => assertSucceeds(deleteDoc(doc(A, `challenges/${cid}`))))
 

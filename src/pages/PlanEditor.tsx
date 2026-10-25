@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ExerciseListEditor } from '../components/ExerciseListEditor'
 import { Icon } from '../components/Icon'
-import { Button, ConfirmSheet, IconButton, Segmented, Sheet, Skeleton } from '../components/ui'
+import { Button, IconButton, Segmented, Sheet, Skeleton } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { getTemplate } from '../data/programs'
@@ -15,8 +15,9 @@ import {
   cloneDays,
   newRestDay,
   newWorkoutDay,
+  daySummary,
   planSummary,
-  setCountOf,
+  rotationText,
   templateToPlanDays,
 } from '../lib/plans'
 import type { PlanDay } from '../types'
@@ -53,6 +54,7 @@ export function PlanEditor() {
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const baseline = useRef('')
+  const discarding = useRef(false)
 
   // Seed the draft once: from a template, a blank plan, or the saved plan being edited.
   useEffect(() => {
@@ -77,6 +79,20 @@ export function PlanEditor() {
     () => (draft ? JSON.stringify({ name: draft.name, days: draft.days }) !== baseline.current : false),
     [draft]
   )
+
+  // Phone/browser Back: keep a spare history entry on top while dirty so Back lands
+  // on it (same URL) and we can ask first. BrowserRouter has no useBlocker.
+  useEffect(() => {
+    if (!dirty) return
+    window.history.pushState({ planEditorGuard: true }, '')
+    const onPop = () => {
+      if (discarding.current) return
+      window.history.pushState({ planEditorGuard: true }, '')
+      setLeaveOpen(true)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [dirty])
 
   // Warn before the tab closes with edits that would be lost.
   useEffect(() => {
@@ -110,7 +126,7 @@ export function PlanEditor() {
     )
   }
 
-  const { workouts, rests, length } = planSummary(draft)
+  const { workouts, length } = planSummary(draft)
   const editing = draft.days.find((d) => d.id === editingDay) ?? null
 
   function patchDraft(patch: Partial<Draft>) {
@@ -200,7 +216,7 @@ export function PlanEditor() {
         <div className="min-w-0 flex-1">
           <h1 className="num-display truncate text-3xl">{isNew ? 'New plan' : isPublic ? 'Edit published plan' : 'Edit plan'}</h1>
           <p className="tabular text-xs text-[var(--color-fg-muted)]">
-            {length}-day cycle · {workouts} workouts · {rests} rest
+            {rotationText(draft)}
           </p>
         </div>
       </header>
@@ -222,10 +238,12 @@ export function PlanEditor() {
         />
       </label>
 
-      <section aria-label="Cycle days">
+      <section aria-label="Days in your rotation">
         <div className="mb-3 flex items-end justify-between gap-3">
-          <h2 className="text-lg font-semibold">Cycle days</h2>
-          <p className="text-xs text-[var(--color-fg-muted)]">Repeats after day {length}</p>
+          <h2 className="text-lg font-semibold">Days in your rotation</h2>
+          <p className="text-xs text-[var(--color-fg-muted)]">
+            {length === 1 ? 'Repeats every day' : `After day ${length}, it starts over at day 1`}
+          </p>
         </div>
         <ol className="flex flex-col gap-3">
           {draft.days.map((day, i) => {
@@ -302,7 +320,7 @@ export function PlanEditor() {
                     <span className="tabular min-w-0 flex-1 truncate text-sm">
                       {day.exercises.length === 0
                         ? 'Add exercises'
-                        : `${day.exercises.length} exercises · ${setCountOf(day.exercises)} sets`}
+                        : daySummary(day.exercises)}
                     </span>
                     <span className="text-xs font-semibold text-brand-400">Edit</span>
                     <Icon name="chevron-right" size={16} className="text-[var(--color-fg-muted)]" />
@@ -376,6 +394,13 @@ export function PlanEditor() {
                   </Button>
                 </div>
               )}
+              {!isNew ? (
+                <p className="text-sm text-[var(--color-fg-muted)]">
+                  {isActive
+                    ? 'Save changes keeps your place in the plan. Save and restart begins the plan again from the start date above, on day 1.'
+                    : 'Make active saves this plan and starts it on the start date above.'}
+                </p>
+              ) : null}
             </>
           )}
         </div>
@@ -399,17 +424,44 @@ export function PlanEditor() {
         ) : null}
       </Sheet>
 
-      <ConfirmSheet
+      <Sheet
         open={leaveOpen}
-        title="Discard changes?"
-        message="You have unsaved edits to this plan. Leaving now will lose them."
-        confirmLabel="Discard"
-        onCancel={() => setLeaveOpen(false)}
-        onConfirm={() => {
-          setLeaveOpen(false)
-          navigate(-1)
-        }}
-      />
+        title="Unsaved changes"
+        onClose={() => setLeaveOpen(false)}
+        footer={
+          <div className="flex flex-col gap-2">
+            <Button
+              full
+              variant="go"
+              size="lg"
+              loading={saving}
+              onClick={() => {
+                setLeaveOpen(false)
+                void commit(false)
+              }}
+            >
+              Save changes
+            </Button>
+            <Button
+              full
+              variant="danger"
+              onClick={() => {
+                setLeaveOpen(false)
+                // Also skip the spare history entry the Back guard added.
+                discarding.current = true
+                navigate(-2)
+              }}
+            >
+              Discard
+            </Button>
+            <Button full variant="secondary" onClick={() => setLeaveOpen(false)}>
+              Keep editing
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-[var(--color-fg-muted)]">You changed this plan but have not saved it yet.</p>
+      </Sheet>
     </div>
   )
 }

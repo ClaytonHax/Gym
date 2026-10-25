@@ -1,4 +1,4 @@
-import type { Exercise, LogMode, MuscleGroup } from '../types'
+import type { CardioField, Exercise, LogMode, MuscleGroup } from '../types'
 
 export const MUSCLE_GROUPS: MuscleGroup[] = [
   'Chest',
@@ -33,9 +33,39 @@ function ex(
   muscle: MuscleGroup,
   equipment: string,
   tracksWeight = true,
-  logBy?: LogMode
+  logBy?: LogMode,
+  cardioFields?: CardioField[],
+  aliases?: string[]
 ): Exercise {
-  return { id, name, muscle, equipment, tracksWeight, ...(logBy ? { logBy } : {}) }
+  return {
+    id,
+    name,
+    muscle,
+    equipment,
+    tracksWeight,
+    ...(logBy ? { logBy } : {}),
+    ...(cardioFields ? { cardioFields } : {}),
+    ...(aliases ? { aliases } : {}),
+  }
+}
+
+/** Lowercase, punctuation stripped, so "Cross-Trainer" matches "cross trainer". */
+export function normalizeSearch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** True when every word typed appears in the name, aliases, muscle or equipment. */
+export function matchesExercise(e: Exercise, query: string): boolean {
+  const q = normalizeSearch(query)
+  if (!q) return true
+  const hay = normalizeSearch(
+    [e.name, ...(e.aliases ?? []), e.muscle, e.equipment ?? ''].join(' ')
+  )
+  return q.split(' ').every((w) => hay.includes(w))
 }
 
 /** Built-in library. Custom exercises live in Firestore and are merged on top. */
@@ -132,9 +162,28 @@ export const BUILTIN_EXERCISES: Exercise[] = [
   ex('hack-squat', 'Hack Squat', 'Legs', 'Machine'),
 
   // Cardio
-  ex('treadmill', 'Treadmill', 'Cardio', 'Machine', false, 'time'),
-  ex('cycling', 'Cycling', 'Cardio', 'Machine', false, 'time'),
-  ex('rowing', 'Rowing Machine', 'Cardio', 'Machine', false, 'time'),
-  ex('stair-climber', 'Stair Climber', 'Cardio', 'Machine', false, 'time'),
-  ex('jump-rope', 'Jump Rope', 'Cardio', 'Other', false, 'time'),
+  ex('treadmill', 'Treadmill', 'Cardio', 'Machine', false, 'time', ['speed', 'incline', 'distance'], ['walk', 'walking', 'running machine', 'jog']),
+  ex('incline-walk', 'Incline Walk (Treadmill)', 'Cardio', 'Machine', false, 'time', ['speed', 'incline'], ['walk', 'walking', 'treadmill', 'hill walk']),
+  ex('outdoor-walk', 'Outdoor Walk', 'Cardio', 'Other', false, 'time', ['distance'], ['walk', 'walking', 'stroll', 'hike']),
+  ex('running', 'Running', 'Cardio', 'Other', false, 'time', ['distance', 'speed'], ['run', 'jog', 'jogging']),
+  ex('cycling', 'Exercise Bike', 'Cardio', 'Machine', false, 'time', ['level', 'distance'], ['bike', 'bicycle', 'cycle', 'cycling', 'stationary bike', 'weighted bike', 'upright bike']),
+  ex('spin-bike', 'Spin Bike', 'Cardio', 'Machine', false, 'time', ['level', 'distance'], ['bike', 'spinning', 'indoor cycling']),
+  ex('air-bike', 'Air Bike / Assault Bike', 'Cardio', 'Machine', false, 'time', ['level', 'distance'], ['assault', 'assault bike', 'fan bike', 'echo bike', 'bike']),
+  ex('rowing', 'Rowing Machine', 'Cardio', 'Machine', false, 'time', ['level', 'distance'], ['rower', 'erg', 'row']),
+  ex('elliptical', 'Elliptical / Cross Trainer', 'Cardio', 'Machine', false, 'time', ['level', 'incline'], ['cross trainer', 'crosstrainer', 'elliptical trainer']),
+  ex('stair-climber', 'Stair Climber', 'Cardio', 'Machine', false, 'time', ['level'], ['stairs', 'stair master', 'stairmaster', 'step mill']),
+  ex('ski-erg', 'Ski Erg', 'Cardio', 'Machine', false, 'time', ['level', 'distance'], ['ski', 'skierg']),
+  ex('swimming', 'Swimming', 'Cardio', 'Other', false, 'time', ['distance'], ['swim', 'laps', 'pool']),
+  ex('jump-rope', 'Jump Rope', 'Cardio', 'Other', false, 'time', undefined, ['skipping', 'skip rope']),
 ]
+
+/** Dumbbell moves are logged per hand; history and charts say so. */
+export function isDumbbellExercise(
+  e: { exerciseId?: string; name: string },
+  equipmentById?: (id: string) => string | undefined
+): boolean {
+  const equipment =
+    (e.exerciseId && equipmentById?.(e.exerciseId)) ||
+    BUILTIN_EXERCISES.find((b) => b.id === e.exerciseId)?.equipment
+  return equipment === 'Dumbbell' || /dumbbell/i.test(e.name)
+}

@@ -1,5 +1,5 @@
-import type { DayKey, PlanDay, PublicPlan } from '../types'
-import { estimateMinutes, planSummary } from './plans'
+import type { DayKey, PlanDay, PublicPlan, ScheduleSlot } from '../types'
+import { estimateMinutes, rotationText } from './plans'
 import { addDays, dayKey, parseDayKey } from './date'
 
 export const DELETE_PHRASE = 'delete my plan'
@@ -45,9 +45,29 @@ export function avgSessionMinutes(days: PlanDay[]): number {
   return w.length ? Math.round(w.reduce((t, d) => t + estimateMinutes(d.exercises), 0) / w.length / 5) * 5 : 0
 }
 
-/** "8-day cycle · 6 workouts · 2 rest · ~55 min" */
+/** "8-day rotation · 6 workouts · 2 rest days · ~55 min" */
 export function infoLine(days: PlanDay[]): string {
-  const { length, workouts, rests } = planSummary({ days })
   const min = avgSessionMinutes(days)
-  return `${length}-day cycle · ${workouts} workouts · ${rests} rest${min ? ` · ~${min} min` : ''}`
+  return `${rotationText({ days })}${min ? ` · ~${min} min` : ''}`
+}
+
+/**
+ * The next workout to point the user at. Once today's workout is done we look from
+ * tomorrow, otherwise "up next" would be the workout they just finished.
+ */
+export function nextWorkoutSlot(slots: ScheduleSlot[], todayDone: boolean): ScheduleSlot | undefined {
+  return slots.find((s) => !s.isRest && s.day && !(todayDone && s.isToday))
+}
+
+/** "Today", "Tomorrow", or the weekday name ("Tuesday") for a day key. */
+export function whenLabel(date: DayKey, now: Date = new Date()): string {
+  const today = dayKey(now)
+  if (date === today) return 'Today'
+  if (date === dayKey(addDays(parseDayKey(today), 1))) return 'Tomorrow'
+  return parseDayKey(date).toLocaleDateString(undefined, { weekday: 'long' })
+}
+
+/** "Tomorrow: Pull 1" / "Tuesday: Pull 1". */
+export function nextWorkoutLabel(slot: ScheduleSlot, now: Date = new Date()): string {
+  return `${whenLabel(slot.date, now)}: ${slot.day?.name ?? 'Workout'}`
 }

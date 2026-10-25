@@ -3,7 +3,6 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Icon, type IconName } from './Icon'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { fmtDuration } from '../lib/date'
-import { InstallPrompt } from './InstallPrompt'
 import { SocialSync } from './SocialSync'
 import { ProfileSetup } from './ProfileSetup'
 import { PublicPlanSeeder } from './plans'
@@ -34,7 +33,7 @@ function OfflineBanner() {
 
   if (!offline) return null
   return (
-    <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-xs font-semibold text-amber-400">
+    <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-400">
       <Icon name="wifi-off" size={14} />
       Offline — your sets are saved and will sync automatically
     </div>
@@ -69,11 +68,11 @@ function ActiveWorkoutBar() {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-semibold">{active.planDayName ?? active.name}</span>
-        <span className="tabular block text-xs text-[var(--color-fg-muted)]">
-          In progress · {fmtDuration(elapsed)}
+        <span className="tabular block text-sm text-[var(--color-fg-muted)]">
+          Workout in progress · {fmtDuration(elapsed)}
         </span>
       </span>
-      <span className="text-xs font-bold uppercase tracking-wider text-brand-400">Resume</span>
+      <span className="text-sm font-bold uppercase tracking-wider text-brand-400">Resume</span>
       <Icon name="chevron-right" size={16} className="text-brand-400" />
     </NavLink>
   )
@@ -104,12 +103,11 @@ export function AppShell() {
         <OfflineBanner />
       </div>
 
-      {/* Bottom padding clears the nav bar + active-workout strip. */}
-      <main id="main" className="mx-auto w-full max-w-2xl px-4 pb-40 pt-4">
+      {/* Bottom padding clears the nav bar, the centre Train button that rises above it, the active-workout strip and the install banner. */}
+      <main id="main" className="mx-auto w-full max-w-2xl px-4 pb-56 pt-4">
         <Outlet />
       </main>
 
-      <InstallPrompt />
       <SocialSync />
       <ProfileSetup />
       <PublicPlanSeeder />
@@ -150,7 +148,7 @@ export function AppShell() {
                       >
                         <Icon name={tab.icon} size={26} />
                       </span>
-                      <span className="text-[11px] font-bold uppercase tracking-wider">{tab.label}</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">{tab.label}</span>
                     </>
                   ) : (
                     <>
@@ -170,7 +168,7 @@ export function AppShell() {
                           ) : null}
                         </span>
                       </span>
-                      <span className="text-[11px] font-bold uppercase tracking-wider">{tab.label}</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">{tab.label}</span>
                     </>
                   )
                 }

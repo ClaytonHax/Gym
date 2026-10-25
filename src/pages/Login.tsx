@@ -8,7 +8,7 @@ type Mode = 'signin' | 'signup' | 'reset'
 
 const COPY: Record<Mode, { title: string; cta: string; sub: string }> = {
   signin: { title: 'Welcome back', cta: 'Sign in', sub: 'Pick up where you left off.' },
-  signup: { title: 'Start training', cta: 'Create account', sub: 'Track every lift from day one.' },
+  signup: { title: 'Start training', cta: 'Create account', sub: 'Track your workouts, weights or cardio, from day one.' },
   reset: { title: 'Reset password', cta: 'Send reset link', sub: 'We’ll email you a link.' },
 }
 

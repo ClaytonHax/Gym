@@ -164,3 +164,20 @@ export function templateToPlanDays(t: PlanTemplate): PlanDay[] {
 export function blankPlanDays(): PlanDay[] {
   return [newWorkoutDay('Day 1')]
 }
+
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** "8-day rotation · 6 workouts · 2 rest days"; a one-day plan reads "1 workout · repeats every day". */
+export function rotationText(plan: Pick<Plan, 'days'>): string {
+  const { workouts, rests, length } = planSummary(plan)
+  if (length === 1) return workouts ? '1 workout · repeats every day' : '1 rest day · repeats every day'
+  return `${length}-day rotation · ${plural(workouts, 'workout')} · ${plural(rests, 'rest day')}`
+}
+
+/** "5 exercises · 18 sets · ~55 min"; all-timed days read "2 activities · ~35 min". */
+export function daySummary(exercises: PlanExercise[]): string {
+  const min = estimateMinutes(exercises)
+  const mins = min ? ` · ~${min} min` : ''
+  if (exercises.length > 0 && exercises.every((e) => isTimed(e))) return `${plural(exercises.length, 'activity').replace('activitys', 'activities')}${mins}`
+  return `${plural(exercises.length, 'exercise')} · ${plural(setCountOf(exercises), 'set')}${mins}`
+}

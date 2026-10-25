@@ -5,10 +5,13 @@ import { Button, Field, Sheet } from './ui'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
+import { doc, getDoc } from 'firebase/firestore'
+import { db } from '../lib/firebase'
+import { useAuth } from '../contexts/AuthContext'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { useUsernameAvailability } from '../hooks/useUsernameAvailability'
 import { dayKey } from '../lib/date'
-import { RENAME_COOLDOWN_DAYS } from '../lib/social'
+import { normalizeUsername, RENAME_COOLDOWN_DAYS, usernameError } from '../lib/social'
 import { kgTo, toKg } from '../lib/units'
 
 const OPEN_EVENT = 'gym:profile-setup'
@@ -37,6 +40,17 @@ function snooze() {
 
 const oneDecimal = (kg: number, unit: 'kg' | 'lb') => String(Math.round(kgTo(unit, kg) * 10) / 10)
 
+/** Readable candidates from a display name: "jake", "jake_g", "jake24", then numbered. */
+export function usernameCandidates(displayName: string, year = new Date().getFullYear()): string[] {
+  const parts = displayName.trim().toLowerCase().split(/\s+/).map((p) => p.replace(/[^a-z0-9]/g, ''))
+  const first = parts[0] ?? ''
+  if (first.length < 3) return []
+  const last = parts.length > 1 ? parts[parts.length - 1] : ''
+  const list = [first, ...(last ? [`${first}_${last[0]}`, `${first}${last}`] : []), `${first}${String(year).slice(2)}`]
+  for (let n = 1; n <= 9; n++) list.push(`${first}${n * 11}`)
+  return [...new Set(list.map(normalizeUsername))].filter((c) => !usernameError(c))
+}
+
 function SetupSheet({ onClose }: { onClose: () => void }) {
   const { me, changeUsername, confirmUsername } = useSocial()
   const { profile, update } = useSettings()
@@ -44,7 +58,9 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
   const toast = useToast()
   const unit = profile.unit
 
+  const { user } = useAuth()
   const [username, setUsername] = useState(me?.username ?? '')
+  const typed = useRef(false)
   const [weight, setWeight] = useState('')
   const [goal, setGoal] = useState(profile.goalWeightKg ? oneDecimal(profile.goalWeightKg, unit) : '')
   const [errors, setErrors] = useState<{ weight?: string; goal?: string }>({})
@@ -62,16 +78,42 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
   }, [loading, latestText])
 
   const needsUsername = Boolean(me?.freeChange)
+
+  // Replace the machine-made handle with a readable one from the display name, if free.
+  useEffect(() => {
+    if (!needsUsername) return
+    const name = profile.displayName || user?.displayName || ''
+    const candidates = usernameCandidates(name)
+    if (candidates.length === 0) return
+    let cancelled = false
+    void (async () => {
+      for (const c of candidates) {
+        try {
+          const snap = await getDoc(doc(db, 'usernames', c))
+          if (cancelled || typed.current) return
+          if (!snap.exists() || snap.data()?.uid === user?.uid) {
+            setUsername(c)
+            return
+          }
+        } catch {
+          return
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsUsername])
   const { next, error, status, setStatus } = useUsernameAvailability(username, me?.username, needsUsername)
   const usernameOk = !needsUsername || next === me?.username || status === 'free'
-  const needsWeight = !latest
 
   async function save() {
     if (!me) return
     const next_: typeof errors = {}
     const w = Number(weight)
     if (weight.trim() === '') {
-      if (needsWeight) next_.weight = 'Enter your current weight.'
+      // Optional: skipping is fine.
     } else if (Number.isNaN(w) || w <= 0) next_.weight = 'Enter a weight above zero.'
     else if (toKg(unit, w) > 500) next_.weight = 'That looks too high — check the number.'
     const g = Number(goal)
@@ -154,7 +196,10 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
               label="Username"
               enterKeyHint="next"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={(e) => {
+                typed.current = true
+                setUsername(e.target.value)
+              }}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -169,12 +214,12 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
                 ) : null
               }
               error={error ?? (status === 'taken' ? 'That username is taken.' : undefined)}
-              hint={
-                status === 'free'
-                  ? 'Available!'
-                  : `You can change it as often as you like right now. Once you save, you can change it once a month (every ${RENAME_COOLDOWN_DAYS} days).`
-              }
+              hint="Friends use this name to find you."
             />
+            <p className="-mt-2 text-sm text-[var(--color-fg-muted)]">
+              Change it as much as you like now. After you save, you can change it once every{' '}
+              {RENAME_COOLDOWN_DAYS} days.
+            </p>
           </>
         ) : null}
 
@@ -188,9 +233,9 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
           value={weight}
           onChange={(e) => setWeight(e.target.value)}
           suffix={unit}
-          placeholder={needsWeight ? 'Required' : '—'}
+          placeholder="Optional"
           error={errors.weight}
-          hint={needsWeight ? 'Logged as today’s weigh-in.' : 'Optional — you already have a weigh-in.'}
+          hint="Optional. Helps estimate calories burned."
         />
         <Field
           label={`Goal weight (${unit})`}

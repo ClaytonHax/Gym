@@ -83,7 +83,7 @@ function LibraryCard({ item, onOpen }: { item: Item; onOpen: () => void }) {
         <span className="min-w-0 truncate font-semibold">
           {item.authorUid ? <ByLine uid={item.authorUid} /> : 'Built-in'}
         </span>
-        {item.usedBy !== undefined ? (
+        {item.usedBy !== undefined && item.usedBy >= 2 ? (
           <span className="tabular flex shrink-0 items-center gap-1">
             <Icon name="users" size={14} />
             Used by {item.usedBy}
@@ -189,7 +189,7 @@ function DetailSheet({
             <p className="whitespace-pre-line text-sm">{item.about || 'No description yet.'}</p>
             <div className="flex items-center justify-between gap-2">
               {item.authorUid ? <AuthorLink uid={item.authorUid} /> : <span className="text-sm text-[var(--color-fg-muted)]">Built-in plan</span>}
-              {item.usedBy !== undefined ? (
+              {item.usedBy !== undefined && item.usedBy >= 2 ? (
                 <span className="tabular flex shrink-0 items-center gap-1 text-xs text-[var(--color-fg-muted)]">
                   <Icon name="users" size={14} />
                   Used by {item.usedBy}
@@ -199,7 +199,7 @@ function DetailSheet({
           </section>
           <section aria-label="Structure" className="flex flex-col gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">
-              Weekly structure
+              How it is laid out
             </h3>
             <PlanStats days={item.days} />
             <DayChips days={item.days} />
@@ -349,7 +349,7 @@ export function PlanLibrary() {
             to="/plans/new"
             className="min-h-11 self-center rounded-xl px-3 py-2.5 text-sm font-semibold text-[var(--color-fg-muted)] hover:text-brand-400"
           >
-            Or design your own plan
+            Or build your own plan
           </Link>
         </>
       )}
