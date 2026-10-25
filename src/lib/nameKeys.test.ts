@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nameKeys, searchText } from './social'
+import { nameKeys, rankSearch, searchText } from './social'
 
 describe('name search keys', () => {
   it('matches the start of the full name and of each word', () => {
@@ -24,5 +24,22 @@ describe('long names', () => {
   it('still finds a later word past the 20-character cap', () => {
     expect(nameKeys('Bartholomew Alexander Banks')).toContain('banks')
     expect(nameKeys('Bartholomew Alexander Banks')).toContain(searchText('Bartholomew Alexander Banks'))
+  })
+})
+
+describe('rankSearch', () => {
+  const p = (uid: string, username: string, displayName: string) => ({ uid, username, displayName, freeChange: false })
+  const jason = p('j', 'thebiggestlamb', 'Jason Lamb')
+  const others = [p('a', 'lambo', 'Andy Car'), p('b', 'bob', 'Bob Jones')]
+
+  it('finds by full name, any word, or the middle of a handle', () => {
+    for (const q of ['jason lamb', 'Jason', 'lamb', 'biggest', '@thebiggest', 'Lamb Jason']) {
+      expect(rankSearch([jason, ...others], q).map((x) => x.uid)).toContain('j')
+    }
+    expect(rankSearch([jason, ...others], 'jason jones')).toEqual([])
+  })
+
+  it('puts handle prefix matches first', () => {
+    expect(rankSearch([jason, ...others], 'lamb').map((x) => x.uid)).toEqual(['a', 'j'])
   })
 })

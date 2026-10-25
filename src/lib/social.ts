@@ -200,6 +200,37 @@ export function nameKeys(displayName: string): string[] {
   return [...keys].filter((k) => k.length >= 2)
 }
 
+/**
+ * Profiles matching a search, best first: handle starts with it, then a name
+ * word starts with it, then it appears anywhere in the handle or name. Every
+ * typed word must match somewhere ("jason lamb" finds Jason Lamb). Deduped by uid.
+ */
+export function rankSearch(profiles: PublicProfile[], raw: string): PublicProfile[] {
+  const q = foldText(raw)
+  const handle = q.replace(/\s+/g, '')
+  const terms = q.split(' ').filter(Boolean)
+  if (!terms.length) return []
+  const seen = new Set<string>()
+  const scored: Array<{ p: PublicProfile; score: number }> = []
+  for (const p of profiles) {
+    if (seen.has(p.uid)) continue
+    seen.add(p.uid)
+    const user = p.username.toLowerCase()
+    const name = foldText(p.displayName)
+    const hay = `${user} ${name}`
+    if (!terms.every((t) => hay.includes(t))) continue
+    const nameWords = name.split(' ')
+    const score =
+      user === handle ? 0
+      : user.startsWith(handle) ? 1
+      : name === q || name.startsWith(q) ? 2
+      : terms.every((t) => nameWords.some((w) => w.startsWith(t)) || user.startsWith(t)) ? 3
+      : 4
+    scored.push({ p, score })
+  }
+  return scored.sort((a, b) => a.score - b.score || a.p.username.localeCompare(b.p.username)).map((s) => s.p)
+}
+
 /** "Clayton Banks" → "claytonbanks482". Always valid against USERNAME_RE. */
 export function suggestUsername(seed: string): string {
   let base = seed

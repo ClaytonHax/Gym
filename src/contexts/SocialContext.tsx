@@ -34,6 +34,7 @@ import {
   describeNotification,
   nameKeys,
   normalizeUsername,
+  rankSearch,
   searchText,
   suggestUsername,
   toIso,
@@ -109,6 +110,9 @@ interface SocialValue {
 }
 
 const SocialContext = createContext<SocialValue | null>(null)
+
+const DIRECTORY_TTL_MS = 5 * 60 * 1000
+const DIRECTORY_CAP = 2000
 
 function toProfile(uid: string, data: Record<string, unknown> | undefined): PublicProfile | undefined {
   if (!data?.username) return undefined
@@ -504,28 +508,36 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     return toProfile(owner, snap.data()) ?? null
   }, [])
 
-  // Username prefix or any word of the name, merged; handle matches first.
+  // Every profile, fetched once and reused for a few minutes, so search can match
+  // anywhere in a name or handle ("lamb" finds @thebiggestlamb) and finds people
+  // whose profile predates nameKeys. Fine while the user base is small; the
+  // indexed queries below still cover anyone past the scan cap.
+  const directory = useRef<{ at: number; list: Promise<PublicProfile[]> } | null>(null)
+
   const searchUsers = useCallback(async (raw: string) => {
     const prefix = normalizeUsername(raw)
     const words = searchText(raw)
     if (words.length < 2) return []
+    if (!directory.current || Date.now() - directory.current.at > DIRECTORY_TTL_MS) {
+      const list = getDocs(query(collection(db, 'profiles'), limit(DIRECTORY_CAP))).then((snap) =>
+        snap.docs.map((d) => toProfile(d.id, d.data())).filter((p): p is PublicProfile => Boolean(p))
+      )
+      // A failed load shouldn't stick: drop it so the next search retries.
+      list.catch(() => (directory.current = null))
+      directory.current = { at: Date.now(), list }
+    }
     const profiles = collection(db, 'profiles')
-    const [byHandle, byName] = await Promise.all([
+    const [all, byHandle, byName] = await Promise.all([
+      directory.current.list,
       /^[a-z0-9_.]+$/.test(prefix)
-        ? getDocs(query(profiles, where('username', '>=', prefix), where('username', '<=', `${prefix}`), limit(10)))
+        ? getDocs(query(profiles, where('username', '>=', prefix), where('username', '<=', `${prefix}\uf8ff`), limit(10)))
         : null,
       getDocs(query(profiles, where('nameKeys', 'array-contains', words), limit(10))),
     ])
-    const seen = new Set<string>()
-    const out: PublicProfile[] = []
-    for (const d of [...(byHandle?.docs ?? []), ...byName.docs]) {
-      const p = toProfile(d.id, d.data())
-      if (p && !seen.has(p.uid)) {
-        seen.add(p.uid)
-        out.push(p)
-      }
-    }
-    return out.slice(0, 15)
+    const indexed = [...(byHandle?.docs ?? []), ...byName.docs]
+      .map((d) => toProfile(d.id, d.data()))
+      .filter((p): p is PublicProfile => Boolean(p))
+    return rankSearch([...all, ...indexed], raw).slice(0, 20)
   }, [])
 
   const changeUsername = useCallback(
