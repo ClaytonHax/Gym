@@ -95,10 +95,17 @@ export function SocialSync() {
   }, [uid, ready, me, watch])
 
   // Track which activity docs exist (and a fingerprint of each) to diff against.
+  // Bumped when that map (re)loads, so the sync below runs as soon as it can.
+  const [activityVersion, setActivityVersion] = useState(0)
   useEffect(() => {
+    // Never diff one account's workouts against another's docs after a sign-in switch.
+    activityIds.current = null
     if (!uid) return
     return onSnapshot(
       collection(db, 'users', uid, 'activity'),
+      // Metadata changes too: an empty collection confirmed by the server only
+      // flips `fromCache`, and without this we'd never hear it and never write.
+      { includeMetadataChanges: true },
       (snap) => {
         if (snap.metadata.fromCache && snap.empty) return
         const map = new Map<string, string>()
@@ -106,7 +113,9 @@ export function SocialSync() {
           const a = d.data()
           map.set(d.id, `${a.name}|${a.sets}|${a.volumeKg}|${a.prs}|${a.durationSec}|${a.cardio ?? ''}|${a.distanceKm ?? ''}`)
         }
+        const first = activityIds.current === null
         activityIds.current = map
+        if (first) setActivityVersion((v) => v + 1)
       },
       (err) => console.warn('activity listener failed', err)
     )
@@ -159,7 +168,7 @@ export function SocialSync() {
       }
     }, 2000)
     return () => window.clearTimeout(t)
-  }, [uid, ready, me, workouts, notifyFriends, profile.unit])
+  }, [uid, ready, me, workouts, notifyFriends, profile.unit, activityVersion])
 
   // Photo battles only count workouts with one of your proofs, so listen to
   // your own proofs in every live one (a week of grace after it ends).
