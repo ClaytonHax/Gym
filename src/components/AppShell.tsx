@@ -104,7 +104,7 @@ export function AppShell() {
       </div>
 
       {/* Bottom padding clears the nav bar, the centre Train button that rises above it, the active-workout strip and the install banner. */}
-      <main id="main" className="mx-auto w-full max-w-2xl px-4 pb-56 pt-4">
+      <main id="main" className="mx-auto w-full max-w-2xl px-4 pb-56 pt-2">
         <Outlet />
       </main>
 
