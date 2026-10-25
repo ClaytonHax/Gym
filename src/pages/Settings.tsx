@@ -271,10 +271,10 @@ export function Settings() {
           <Toggle
             label="Auto rest timer"
             description="Counts down after each strength set."
-            checked={profile.restTimer !== false}
+            checked={profile.restTimer === true}
             onChange={(next) => save({ restTimer: next })}
           />
-          {profile.restTimer !== false ? (
+          {profile.restTimer === true ? (
             <>
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]">

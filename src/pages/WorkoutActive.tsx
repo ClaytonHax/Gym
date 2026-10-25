@@ -321,7 +321,7 @@ export function WorkoutActive() {
     // Superset partners go back-to-back; rest only after the last exercise in the group.
     const next = active?.exercises[exIndex + 1]
     const mid = Boolean(ex.supersetId) && next?.supersetId === ex.supersetId
-    if (!mid && !skipsRest(ex) && profile.restTimer !== false) {
+    if (!mid && !skipsRest(ex) && profile.restTimer === true) {
       timerRef.current?.start(profile.restFollowsPlan ? ex.restSec : undefined)
     }
   }
@@ -661,7 +661,7 @@ export function WorkoutActive() {
       </header>
 
       {/* Idle it's a normal card; while counting down it becomes one slim sticky row. */}
-      {profile.restTimer !== false ? <RestTimer onReady={onTimerReady} /> : null}
+      {profile.restTimer === true ? <RestTimer onReady={onTimerReady} /> : null}
 
       <Kill2Banner active={active} />
 
@@ -721,7 +721,7 @@ export function WorkoutActive() {
                     {aim ? (
                       <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
                         {aim}
-                        {ex.restSec && profile.restFollowsPlan && profile.restTimer !== false
+                        {ex.restSec && profile.restFollowsPlan && profile.restTimer === true
                           ? ` · Rest ${fmtClock(ex.restSec)}`
                           : ''}
                       </p>
