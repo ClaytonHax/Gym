@@ -136,6 +136,20 @@ export function getTemplate(id: string): PlanTemplate | undefined {
 /** Turn a plan into fresh, un-ticked workout exercises with targets pre-filled. */
 export function planToExercises(plan: PlanExercise[]): WorkoutExercise[] {
   return plan.map((p) => {
+    if (p.logBy === 'time') {
+      // Timed work is open-ended: one empty set, more are added as needed.
+      return {
+        exerciseId: p.exerciseId,
+        name: p.name,
+        muscle: p.muscle,
+        tracksWeight: p.tracksWeight,
+        logBy: 'time' as const,
+        ...(p.targetDurationSec ? { targetDurationSec: p.targetDurationSec } : {}),
+        ...(p.restSec ? { restSec: p.restSec } : {}),
+        ...(p.supersetId ? { supersetId: p.supersetId } : {}),
+        sets: [{ weightKg: 0, reps: 0, done: false }],
+      }
+    }
     const targets = p.targets ?? Array.from({ length: p.sets ?? 3 }, () => '')
     return {
       exerciseId: p.exerciseId,

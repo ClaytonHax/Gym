@@ -3,9 +3,12 @@ import { createPortal } from 'react-dom'
 import { Icon } from './Icon'
 import { ExercisePicker } from './ExercisePicker'
 import { Button, IconButton } from './ui'
-import type { Exercise, PlanExercise } from '../types'
+import { LogModeToggle } from './LogModeToggle'
+import { fmtTargetDuration, isTimed } from '../lib/logMode'
+import type { Exercise, LogMode, PlanExercise } from '../types'
 
 const REST_OPTIONS = [30, 60, 90, 120, 150, 180, 240, 300]
+const TIME_OPTIONS = [300, 600, 900, 1200, 1800, 2700, 3600]
 
 function restLabel(sec: number): string {
   return sec < 60 ? `${sec}s` : `${sec / 60} min`
@@ -26,12 +29,14 @@ function parseRanges(text: string): string[] {
 }
 
 function fromExercise(e: Exercise): PlanExercise {
+  const timed = e.logBy === 'time'
   return {
     exerciseId: e.id,
     name: e.name,
     muscle: e.muscle,
     tracksWeight: e.tracksWeight,
-    targets: ['10-15', '10-15', '10-15'],
+    ...(timed ? { logBy: 'time' as const, targetDurationSec: 600 } : {}),
+    targets: timed ? [] : ['10-15', '10-15', '10-15'],
     restSec: 120,
   }
 }
@@ -51,6 +56,19 @@ export function ExerciseListEditor({
 
   function patchItem(i: number, patch: Partial<PlanExercise>) {
     onChange(items.map((it, j) => (j === i ? { ...it, ...patch } : it)))
+  }
+
+  function setMode(i: number, mode: LogMode) {
+    onChange(
+      items.map((it, j) => {
+        if (j !== i) return it
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { logBy, targetDurationSec, targets, ...rest } = it
+        return mode === 'time'
+          ? { ...rest, logBy: 'time', targetDurationSec: targetDurationSec ?? 600, targets: [] }
+          : { ...rest, targets: ['10-15', '10-15', '10-15'] }
+      }),
+    )
   }
 
   function move(i: number, dir: -1 | 1) {
@@ -91,7 +109,45 @@ export function ExerciseListEditor({
               />
             </div>
 
-            <div className="mt-2 grid grid-cols-[auto_1fr_auto] items-end gap-3">
+            <div className="mt-2">
+              <LogModeToggle
+                size="sm"
+                label={`Log ${it.name} by`}
+                value={isTimed(it) ? 'time' : 'reps'}
+                onChange={(m) => setMode(i, m)}
+              />
+            </div>
+
+            <div
+              className={`mt-2 grid items-end gap-3 ${
+                isTimed(it) ? 'grid-cols-[1fr_auto]' : 'grid-cols-[auto_1fr_auto]'
+              }`}
+            >
+              {isTimed(it) ? (
+                <div className="min-w-0">
+                  <label>
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                      Target time
+                    </span>
+                    <select
+                      value={it.targetDurationSec ?? 600}
+                      onChange={(e) => patchItem(i, { targetDurationSec: Number(e.target.value) })}
+                      aria-label={`Target time for ${it.name}`}
+                      className="min-h-10 rounded-lg border border-transparent bg-[var(--color-surface)] px-2 font-semibold outline-none focus:border-brand-500"
+                    >
+                      {[...new Set([...TIME_OPTIONS, it.targetDurationSec ?? 600])]
+                        .sort((a, b) => a - b)
+                        .map((s) => (
+                          <option key={s} value={s}>
+                            {fmtTargetDuration(s)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <p className="mt-1 text-xs text-[var(--color-fg-muted)]">Sets: as many as you need</p>
+                </div>
+              ) : (
+                <>
               <div>
                 <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
                   Sets
@@ -139,6 +195,8 @@ export function ExerciseListEditor({
                   className="min-h-10 w-full rounded-lg border border-transparent bg-[var(--color-surface)] px-2 text-center font-semibold outline-none focus:border-brand-500"
                 />
               </label>
+                </>
+              )}
 
               <label>
                 <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">

@@ -2,6 +2,7 @@ import type { Workout } from '../types'
 import { addDays, dayKey, parseDayKey, startOfWeek } from './date'
 import { bestSetOf, estimate1rm } from './stats'
 import type { StreakStats } from './streaks'
+import { isTimed } from './logMode'
 
 /* -------------------------------------------------------------------------- */
 /* Types — mirrors of the Firestore docs described in firestore.rules          */
@@ -222,7 +223,7 @@ export function buildPublicStats(workouts: Workout[], streaks: StreakStats, week
   const chronological = [...workouts].sort((a, b) => a.startedAt.localeCompare(b.startedAt))
   for (const w of chronological) {
     for (const ex of w.exercises) {
-      if (!ex.tracksWeight) continue
+      if (!ex.tracksWeight || isTimed(ex)) continue
       const best = bestSetOf(ex)
       if (!best) continue
       const e1rm = estimate1rm(best.weightKg, best.reps)
@@ -389,7 +390,7 @@ export function prsIn(workout: Workout, all: Workout[]): number {
     if (w.startedAt >= workout.startedAt) continue
     for (const ex of w.exercises) {
       const b = bestSetOf(ex)
-      if (!b || !ex.tracksWeight) continue
+      if (!b || !ex.tracksWeight || isTimed(ex)) continue
       const e = estimate1rm(b.weightKg, b.reps)
       if (e > (best.get(ex.exerciseId) ?? 0)) best.set(ex.exerciseId, e)
     }
@@ -397,7 +398,7 @@ export function prsIn(workout: Workout, all: Workout[]): number {
   let count = 0
   for (const ex of workout.exercises) {
     const b = bestSetOf(ex)
-    if (!b || !ex.tracksWeight) continue
+    if (!b || !ex.tracksWeight || isTimed(ex)) continue
     const prev = best.get(ex.exerciseId)
     if (prev !== undefined && estimate1rm(b.weightKg, b.reps) > prev) count++
   }

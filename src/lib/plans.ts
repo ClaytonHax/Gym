@@ -9,6 +9,7 @@ import type {
   ScheduleSlot,
 } from '../types'
 import { planToExercises } from '../data/programs'
+import { fmtTargetDuration, isTimed } from './logMode'
 import { addDays, dayKey, parseDayKey } from './date'
 
 export function newDayId(): string {
@@ -129,13 +130,23 @@ export function startPlanDay(plan: Plan, slot: ScheduleSlot): ActiveWorkout {
 }
 
 export function setCountOf(exercises: PlanExercise[]): number {
-  return exercises.reduce((t, e) => t + (e.targets?.length ?? e.sets ?? 0), 0)
+  return exercises.reduce((t, e) => t + (isTimed(e) ? 1 : (e.targets?.length ?? e.sets ?? 0)), 0)
+}
+
+/** "3×10-15" for rep work, "20 min" for timed. */
+export function exerciseTargetLabel(e: PlanExercise): string {
+  if (isTimed(e)) return fmtTargetDuration(e.targetDurationSec ?? 600)
+  return `${e.targets?.length ?? e.sets ?? 0}×${e.targets?.[0] || '—'}`
 }
 
 /** Rough session length: ~45s under tension per set plus the prescribed rest, to the nearest 5 min. */
 export function estimateMinutes(exercises: PlanExercise[]): number {
   const sec = exercises.reduce(
-    (t, e) => t + (e.targets?.length ?? e.sets ?? 0) * (45 + (e.restSec ?? 90)),
+    (t, e) =>
+      t +
+      (isTimed(e)
+        ? (e.targetDurationSec ?? 600)
+        : (e.targets?.length ?? e.sets ?? 0) * (45 + (e.restSec ?? 90))),
     0
   )
   return Math.round(sec / 60 / 5) * 5

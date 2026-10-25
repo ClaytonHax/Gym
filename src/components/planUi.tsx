@@ -8,7 +8,7 @@ import { MUSCLE_COLORS } from '../data/exercises'
 import { usePlans } from '../hooks/usePlans'
 import { usePublicPlanActions } from '../hooks/usePublicPlans'
 import { addDays, dayKey, fmtDuration, parseDayKey } from '../lib/date'
-import { estimateMinutes, planSummary, setCountOf } from '../lib/plans'
+import { estimateMinutes, exerciseTargetLabel, planSummary, setCountOf } from '../lib/plans'
 import { avgSessionMinutes, matchesDeletePhrase, DELETE_PHRASE, startDateFor } from '../lib/planUiLogic'
 import type { DayKey, Plan, PlanDay } from '../types'
 
@@ -99,7 +99,6 @@ function DayRow({ day, index, defaultOpen }: { day: PlanDay; index: number; defa
             <li className="text-[var(--color-fg-muted)]">No exercises yet.</li>
           ) : null}
           {day.exercises.map((e, j) => {
-            const sets = e.targets?.length ?? e.sets ?? 0
             const rest = e.restSec ? fmtDuration(e.restSec) : null
             return (
               <li key={`${e.exerciseId}-${j}`} className="flex items-center gap-2 py-0.5">
@@ -110,7 +109,7 @@ function DayRow({ day, index, defaultOpen }: { day: PlanDay; index: number; defa
                 />
                 <span className="min-w-0 flex-1 truncate">{e.name}</span>
                 <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
-                  {sets}×{e.targets?.[0] || '—'}
+                  {exerciseTargetLabel(e)}
                   {rest ? ` · ${rest} rest` : ''}
                 </span>
               </li>

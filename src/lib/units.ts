@@ -30,3 +30,31 @@ export function fmtVolume(kg: number, unit: Unit): string {
 export function step(unit: Unit): number {
   return unit === 'kg' ? 2.5 : 5
 }
+
+const KM_PER_MI = 1.609344
+
+/** Distance follows the weight unit: kg users think in km, lb users in miles. */
+export function distanceUnit(unit: Unit): 'km' | 'mi' {
+  return unit === 'kg' ? 'km' : 'mi'
+}
+
+export function kmTo(unit: Unit, km: number): number {
+  return unit === 'kg' ? km : km / KM_PER_MI
+}
+
+export function toKm(unit: Unit, value: number): number {
+  return unit === 'kg' ? value : value * KM_PER_MI
+}
+
+export function fmtDistance(km: number, unit: Unit, withUnit = true): string {
+  const v = Math.round(kmTo(unit, km) * 100) / 100
+  return withUnit ? `${v} ${distanceUnit(unit)}` : String(v)
+}
+
+/** Seconds per display distance unit, e.g. "5:12 /km"; null without both values. */
+export function fmtPace(durationSec: number, km: number, unit: Unit): string | null {
+  const d = kmTo(unit, km)
+  if (!durationSec || !d) return null
+  const per = Math.round(durationSec / d)
+  return `${Math.floor(per / 60)}:${String(per % 60).padStart(2, '0')} /${distanceUnit(unit)}`
+}

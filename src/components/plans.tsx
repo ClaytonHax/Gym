@@ -14,7 +14,7 @@ import { usePlanSync } from '../contexts/PlanSyncContext'
 import { hasExercise, pickOwnerPplPlan, samePlanContent, stripExercise, type SyncAction } from '../lib/planSync'
 import { clean } from '../hooks/usePlans'
 import { taglineOf, usePublicPlanActions, usedByCount, useRecommendedPlans } from '../hooks/usePublicPlans'
-import { estimateMinutes, setCountOf } from '../lib/plans'
+import { estimateMinutes, exerciseTargetLabel, setCountOf } from '../lib/plans'
 import { fmtDuration } from '../lib/date'
 import type { Plan, PlanDay, PlanTemplate, PublicPlan } from '../types'
 
@@ -217,7 +217,7 @@ export function PublicPlanSheet({ plan, onClose }: { plan: PublicPlan | null; on
                           />
                           <span className="min-w-0 flex-1 truncate">{e.name}</span>
                           <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
-                            {e.targets.length}×{e.targets[0] || '—'}
+                            {exerciseTargetLabel(e)}
                           </span>
                         </li>
                       ))}

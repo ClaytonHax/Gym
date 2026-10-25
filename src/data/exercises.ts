@@ -1,4 +1,4 @@
-import type { Exercise, MuscleGroup } from '../types'
+import type { Exercise, LogMode, MuscleGroup } from '../types'
 
 export const MUSCLE_GROUPS: MuscleGroup[] = [
   'Chest',
@@ -32,9 +32,10 @@ function ex(
   name: string,
   muscle: MuscleGroup,
   equipment: string,
-  tracksWeight = true
+  tracksWeight = true,
+  logBy?: LogMode
 ): Exercise {
-  return { id, name, muscle, equipment, tracksWeight }
+  return { id, name, muscle, equipment, tracksWeight, ...(logBy ? { logBy } : {}) }
 }
 
 /** Built-in library. Custom exercises live in Firestore and are merged on top. */
@@ -105,7 +106,7 @@ export const BUILTIN_EXERCISES: Exercise[] = [
   ex('hip-abduction', 'Hip Abduction', 'Glutes', 'Machine'),
 
   // Core
-  ex('plank', 'Plank', 'Core', 'Bodyweight', false),
+  ex('plank', 'Plank', 'Core', 'Bodyweight', false, 'time'),
   ex('hanging-leg-raise', 'Hanging Leg Raise', 'Core', 'Bodyweight', false),
   ex('cable-crunch', 'Cable Crunch', 'Core', 'Cable'),
   ex('russian-twist', 'Russian Twist', 'Core', 'Dumbbell'),
@@ -131,9 +132,9 @@ export const BUILTIN_EXERCISES: Exercise[] = [
   ex('hack-squat', 'Hack Squat', 'Legs', 'Machine'),
 
   // Cardio
-  ex('treadmill', 'Treadmill', 'Cardio', 'Machine', false),
-  ex('cycling', 'Cycling', 'Cardio', 'Machine', false),
-  ex('rowing', 'Rowing Machine', 'Cardio', 'Machine', false),
-  ex('stair-climber', 'Stair Climber', 'Cardio', 'Machine', false),
-  ex('jump-rope', 'Jump Rope', 'Cardio', 'Other', false),
+  ex('treadmill', 'Treadmill', 'Cardio', 'Machine', false, 'time'),
+  ex('cycling', 'Cycling', 'Cardio', 'Machine', false, 'time'),
+  ex('rowing', 'Rowing Machine', 'Cardio', 'Machine', false, 'time'),
+  ex('stair-climber', 'Stair Climber', 'Cardio', 'Machine', false, 'time'),
+  ex('jump-rope', 'Jump Rope', 'Cardio', 'Other', false, 'time'),
 ]

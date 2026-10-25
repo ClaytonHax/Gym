@@ -1,4 +1,5 @@
 import type { BodyEntry, PersonalRecord, Workout, WorkoutExercise } from '../types'
+import { isTimed } from './logMode'
 import { addDays, dayKey, parseDayKey, startOfWeek } from './date'
 
 /** Only completed working sets count toward volume. */
@@ -40,11 +41,38 @@ export function bestSetOf(ex: WorkoutExercise): { weightKg: number; reps: number
   return best
 }
 
+/** Longest completed working set of a timed exercise, with the distance logged on it. */
+export function timedBestOf(
+  ex: WorkoutExercise
+): { durationSec: number; distanceKm: number | undefined } | null {
+  let best: { durationSec: number; distanceKm: number | undefined } | null = null
+  for (const s of ex.sets) {
+    if (!s.done || s.warmup || !s.durationSec) continue
+    if (!best || s.durationSec > best.durationSec) {
+      best = { durationSec: s.durationSec, distanceKm: s.distanceKm }
+    }
+  }
+  return best
+}
+
+/** Longest single timed set per exercise across history — drives the "longest session" toast. */
+export function bestDurationByExercise(workouts: Workout[]): Map<string, number> {
+  const best = new Map<string, number>()
+  for (const w of workouts) {
+    for (const ex of w.exercises) {
+      if (!isTimed(ex)) continue
+      const b = timedBestOf(ex)
+      if (b && b.durationSec > (best.get(ex.exerciseId) ?? 0)) best.set(ex.exerciseId, b.durationSec)
+    }
+  }
+  return best
+}
+
 export function personalRecords(workouts: Workout[]): PersonalRecord[] {
   const byExercise = new Map<string, PersonalRecord>()
   for (const w of workouts) {
     for (const ex of w.exercises) {
-      if (!ex.tracksWeight) continue
+      if (!ex.tracksWeight || isTimed(ex)) continue
       const best = bestSetOf(ex)
       if (!best) continue
       const est = estimate1rm(best.weightKg, best.reps)
@@ -159,7 +187,7 @@ export function exerciseProgress(workouts: Workout[], exerciseId: string): Trend
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt))
     .flatMap((w) => {
       const ex = w.exercises.find((e) => e.exerciseId === exerciseId)
-      if (!ex) return []
+      if (!ex || isTimed(ex)) return []
       const best = bestSetOf(ex)
       if (!best) return []
       return [
@@ -180,7 +208,10 @@ export function lastPerformance(
   workouts: Workout[],
   exerciseId: string,
   excludeWorkoutId?: string
-): { date: string; sets: Array<{ weightKg: number; reps: number }> } | null {
+): {
+  date: string
+  sets: Array<{ weightKg: number; reps: number; durationSec?: number; distanceKm?: number }>
+} | null {
   const sorted = [...workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
   for (const w of sorted) {
     if (w.id === excludeWorkoutId) continue
@@ -188,7 +219,12 @@ export function lastPerformance(
     if (!ex) continue
     const sets = ex.sets
       .filter((s) => s.done && !s.warmup)
-      .map((s) => ({ weightKg: s.weightKg, reps: s.reps }))
+      .map((s) => ({
+        weightKg: s.weightKg,
+        reps: s.reps,
+        ...(s.durationSec !== undefined ? { durationSec: s.durationSec } : {}),
+        ...(s.distanceKm !== undefined ? { distanceKm: s.distanceKm } : {}),
+      }))
     if (sets.length > 0) return { date: w.startedAt, sets }
   }
   return null

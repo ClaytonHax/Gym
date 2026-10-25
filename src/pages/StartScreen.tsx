@@ -11,7 +11,7 @@ import { usePlans } from '../hooks/usePlans'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { planToExercises } from '../data/programs'
 import { fmtDuration } from '../lib/date'
-import { estimateMinutes, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
+import { estimateMinutes, exerciseTargetLabel, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
 import type { ActiveWorkout, Exercise, PlanExercise, Routine, WorkoutExercise } from '../types'
 
 function defaultName(): string {
@@ -34,7 +34,7 @@ function PlanCard({
   onStart: () => void
   actions?: React.ReactNode
 }) {
-  const sets = plan.reduce((n, e) => n + e.targets.length, 0)
+  const sets = setCountOf(plan)
   return (
     <li className={`card overflow-hidden ${highlight ? 'border-brand-500/60' : ''}`}>
       <div className="flex items-start gap-2 p-4 pb-3">
@@ -54,7 +54,7 @@ function PlanCard({
             />
             <span className="min-w-0 flex-1 truncate">{e.name}</span>
             <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
-              {e.targets.length}×{e.targets[0] || '—'}
+              {exerciseTargetLabel(e)}
             </span>
           </li>
         ))}
@@ -160,7 +160,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
                   />
                   <span className="min-w-0 flex-1 truncate">{e.name}</span>
                   <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
-                    {e.targets.length}×{e.targets[0] || '—'}
+                    {exerciseTargetLabel(e)}
                   </span>
                 </li>
               ))}

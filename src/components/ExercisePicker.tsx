@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Icon } from './Icon'
+import { LogModeToggle } from './LogModeToggle'
 import { Badge, Button, Field, Sheet } from './ui'
 import { useExercises } from '../hooks/useExercises'
 import { useToast } from '../contexts/ToastContext'
 import { MUSCLE_COLORS, MUSCLE_GROUPS } from '../data/exercises'
-import type { Exercise, MuscleGroup } from '../types'
+import type { Exercise, LogMode, MuscleGroup } from '../types'
 
 /**
  * Searchable exercise library with a create-your-own fallback.
@@ -30,6 +31,7 @@ export function ExercisePicker({
   const [newMuscle, setNewMuscle] = useState<MuscleGroup>('Chest')
   const [newEquipment, setNewEquipment] = useState('Barbell')
   const [newTracksWeight, setNewTracksWeight] = useState(true)
+  const [newLogBy, setNewLogBy] = useState<LogMode>('reps')
   const [saving, setSaving] = useState(false)
 
   const filtered = useMemo(() => {
@@ -51,6 +53,8 @@ export function ExercisePicker({
     setSelected([])
     setCreating(false)
     setNewName('')
+    setNewLogBy('reps')
+    setNewTracksWeight(true)
   }
 
   function close() {
@@ -77,12 +81,14 @@ export function ExercisePicker({
         name,
         muscle: newMuscle,
         equipment: newEquipment.trim() || 'Other',
-        tracksWeight: newTracksWeight,
+        tracksWeight: newLogBy === 'time' ? false : newTracksWeight,
+        ...(newLogBy === 'time' ? { logBy: 'time' as const } : {}),
       })
       toast(`${name} added to your library.`)
       setSelected((prev) => [...prev, id])
       setCreating(false)
       setNewName('')
+      setNewLogBy('reps')
     } catch {
       toast('Could not save that exercise. Try again.', 'error')
     } finally {
@@ -183,20 +189,33 @@ export function ExercisePicker({
             onChange={(e) => setNewEquipment(e.target.value)}
             placeholder="Barbell, Dumbbell, Machine…"
           />
-          <label className="flex items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-3">
-            <input
-              type="checkbox"
-              checked={newTracksWeight}
-              onChange={(e) => setNewTracksWeight(e.target.checked)}
-              className="size-5 accent-[var(--color-brand-500)]"
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium">Logged by</span>
+            <LogModeToggle
+              value={newLogBy}
+              label="Logged by"
+              onChange={(m) => {
+                setNewLogBy(m)
+                setNewTracksWeight(m !== 'time')
+              }}
             />
-            <span className="text-sm">
-              Tracks weight
-              <span className="block text-xs text-[var(--color-fg-muted)]">
-                Turn off for bodyweight or cardio work (reps only).
+          </div>
+          {newLogBy === 'time' ? null : (
+            <label className="flex items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3.5 py-3">
+              <input
+                type="checkbox"
+                checked={newTracksWeight}
+                onChange={(e) => setNewTracksWeight(e.target.checked)}
+                className="size-5 accent-[var(--color-brand-500)]"
+              />
+              <span className="text-sm">
+                Tracks weight
+                <span className="block text-xs text-[var(--color-fg-muted)]">
+                  Turn off for bodyweight or cardio work (reps only).
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          )}
           <div className="flex gap-3">
             <Button type="button" variant="secondary" full onClick={() => setCreating(false)}>
               Cancel
@@ -244,7 +263,7 @@ export function ExercisePicker({
                         <span className="block text-xs text-[var(--color-fg-muted)]">
                           {ex.equipment}
                           {ex.custom ? ' · Custom' : ''}
-                          {!ex.tracksWeight ? ' · Reps only' : ''}
+                          {ex.logBy === 'time' ? ' · Timed' : !ex.tracksWeight ? ' · Reps only' : ''}
                         </span>
                       </span>
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>

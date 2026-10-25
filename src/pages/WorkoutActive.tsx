@@ -16,6 +16,8 @@ import { PlateCalculator } from '../components/PlateCalculator'
 import { StartScreen } from './StartScreen'
 import { RestTimer, type RestTimerHandle } from '../components/RestTimer'
 import { SetRow } from '../components/SetRow'
+import { TimedSetRow } from '../components/TimedSetRow'
+import { LogModeToggle } from '../components/LogModeToggle'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
@@ -28,9 +30,17 @@ import { MUSCLE_COLORS } from '../data/exercises'
 import { dayKey, fmtClock, fmtDuration } from '../lib/date'
 import type { PhotoSvg } from '../lib/photoSvg'
 import { challengeState } from '../lib/social'
-import { fmtVolume, fmtWeight, step } from '../lib/units'
-import { completedSetCount, estimate1rm, lastPerformance, personalRecords, volumeOf } from '../lib/stats'
-import type { ActiveWorkout, Exercise, Workout, WorkoutExercise, WorkoutSet } from '../types'
+import { fmtDuration as fmtStopwatch, fmtTargetDuration, isTimed, logModeOf } from '../lib/logMode'
+import { fmtDistance, fmtVolume, fmtWeight, step } from '../lib/units'
+import {
+  bestDurationByExercise,
+  completedSetCount,
+  estimate1rm,
+  lastPerformance,
+  personalRecords,
+  volumeOf,
+} from '../lib/stats'
+import type { ActiveWorkout, Exercise, LogMode, Workout, WorkoutExercise, WorkoutSet } from '../types'
 
 /**
  * Easter egg: roughly 1 in 4 Pull 2 sessions get a nod to "The Kill 2". Seeded
@@ -90,6 +100,7 @@ function toWorkoutExercise(ex: Exercise): WorkoutExercise {
     name: ex.name,
     muscle: ex.muscle,
     tracksWeight: ex.tracksWeight,
+    ...(ex.logBy ? { logBy: ex.logBy } : {}),
     sets: [emptySet()],
   }
 }
@@ -174,6 +185,8 @@ export function WorkoutActive() {
     [workouts]
   )
 
+  const bestDurations = useMemo(() => bestDurationByExercise(workouts), [workouts])
+
   const totalSets = active ? active.exercises.reduce((n, e) => n + e.sets.length, 0) : 0
   const doneSets = active ? active.exercises.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0) : 0
 
@@ -209,6 +222,8 @@ export function WorkoutActive() {
     updateExercise(index, (ex) => {
       // Carry the previous set's load forward — that's almost always the intent.
       const last = ex.sets[ex.sets.length - 1]
+      // Timed sets start empty — the previous values show as placeholders instead.
+      if (isTimed(ex)) return { ...ex, sets: [...ex.sets, emptySet()] }
       return {
         ...ex,
         sets: [
@@ -219,15 +234,46 @@ export function WorkoutActive() {
     })
   }
 
-  function toggleSetDone(exIndex: number, setIndex: number) {
+  /** Switch an exercise between weight × reps and time, keeping only the sets that still make sense. */
+  function setLogMode(exIndex: number, mode: LogMode) {
+    const ex = active?.exercises[exIndex]
+    if (!ex || logModeOf(ex) === mode) return
+    updateExercise(exIndex, (e) => {
+      let sets = e.sets.map((s) => {
+        const fits = mode === 'time' ? (s.durationSec ?? 0) > 0 : s.reps > 0
+        const next: WorkoutSet = { ...s, done: s.done && fits }
+        if (mode === 'reps') delete next.timerStartedAt
+        return next
+      })
+      if (mode === 'time') {
+        // Timed work is open-ended: several blank placeholders collapse to one.
+        const isBlank = (s: WorkoutSet) => !s.done && !s.durationSec && !s.reps && !s.weightKg
+        const firstBlank = sets.findIndex(isBlank)
+        sets = sets.filter((s, i) => !isBlank(s) || i === firstBlank)
+        if (sets.length === 0) sets = [emptySet()]
+      }
+      const { logBy: _unused, ...rest } = e
+      return mode === 'time' ? { ...rest, logBy: 'time' as const, sets } : { ...rest, sets }
+    })
+    toast(mode === 'time' ? `Logging ${ex.name} by time` : `Logging ${ex.name} by weight × reps`)
+  }
+
+  function toggleSetDone(exIndex: number, setIndex: number, override?: Partial<WorkoutSet>) {
     const ex = active?.exercises[exIndex]
     const wasDone = ex?.sets[setIndex]?.done
     updateExercise(exIndex, (e) => ({
       ...e,
-      sets: e.sets.map((s, i) => (i === setIndex ? { ...s, done: !s.done } : s)),
+      sets: e.sets.map((s, i) => (i === setIndex ? dropUndefined({ ...s, ...override, done: !s.done }) : s)),
     }))
-    const set = ex?.sets[setIndex]
+    const set = ex?.sets[setIndex] ? { ...ex.sets[setIndex], ...override } : undefined
     if (wasDone || !ex || !set || set.warmup) return
+
+    // Timed sets: no 1RM, no auto rest timer — just a nod when it's the longest ever.
+    if (isTimed(ex)) {
+      const prior = bestDurations.get(ex.exerciseId)
+      if (prior && (set.durationSec ?? 0) > prior) toast(`New longest ${ex.name} session!`)
+      return
+    }
 
     // Live PR check against history — a first-ever session has nothing to beat.
     const prior = records.get(ex.exerciseId)
@@ -277,12 +323,22 @@ export function WorkoutActive() {
     }
     updateExercise(exIndex, (e) => ({
       ...e,
-      sets: last.sets.map((s, i) => ({
-        weightKg: s.weightKg,
-        reps: s.reps,
-        done: false,
-        ...(e.sets[i]?.targetReps ? { targetReps: e.sets[i].targetReps } : {}),
-      })),
+      sets: last.sets.map((s, i) =>
+        isTimed(e)
+          ? {
+              weightKg: 0,
+              reps: 0,
+              done: false,
+              ...(s.durationSec !== undefined ? { durationSec: s.durationSec } : {}),
+              ...(s.distanceKm !== undefined ? { distanceKm: s.distanceKm } : {}),
+            }
+          : {
+              weightKg: s.weightKg,
+              reps: s.reps,
+              done: false,
+              ...(e.sets[i]?.targetReps ? { targetReps: e.sets[i].targetReps } : {}),
+            }
+      ),
     }))
     toast('Loaded your last session’s sets.')
   }
@@ -377,7 +433,9 @@ export function WorkoutActive() {
               name: ex.name,
               muscle: ex.muscle,
               tracksWeight: ex.tracksWeight,
-              targets: ex.sets.filter((s) => !s.warmup).map((s) => s.targetReps ?? ''),
+              ...(isTimed(ex)
+                ? { logBy: 'time' as const, targets: [], targetDurationSec: ex.targetDurationSec }
+                : { targets: ex.sets.filter((s) => !s.warmup).map((s) => s.targetReps ?? '') }),
               restSec: ex.restSec,
               supersetId: ex.supersetId,
             })
@@ -487,7 +545,12 @@ export function WorkoutActive() {
         <ul className="flex flex-col gap-3">
           {active.exercises.map((ex, exIndex) => {
             const last = lastPerformance(workouts, ex.exerciseId)
-            const overload = last ? hitTopOfRange(ex, last.sets) : false
+            const timed = isTimed(ex)
+            const overload = last && !timed ? hitTopOfRange(ex, last.sets) : false
+            const doneTimed = ex.sets.filter((s) => s.done && !s.warmup)
+            const totalSec = doneTimed.reduce((n, s) => n + (s.durationSec ?? 0), 0)
+            const totalKm = doneTimed.reduce((n, s) => n + (s.distanceKm ?? 0), 0)
+            const lastSet = ex.sets[ex.sets.length - 1]
             return (
               <Card
                 as="li"
@@ -501,7 +564,16 @@ export function WorkoutActive() {
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
                       {ex.supersetId ? <Badge color="#8b5cf6">Superset</Badge> : null}
                     </div>
-                    {ex.sets.some((s) => s.targetReps) ? (
+                    {timed && (ex.targetDurationSec || totalSec > 0) ? (
+                      <p className="tabular mt-0.5 truncate text-xs font-semibold text-brand-400">
+                        {ex.targetDurationSec ? `Target ${fmtTargetDuration(ex.targetDurationSec)}` : ''}
+                        {ex.targetDurationSec && totalSec > 0 ? ' · ' : ''}
+                        {totalSec > 0
+                          ? `Total ${fmtStopwatch(totalSec)}${totalKm > 0 ? ` · ${fmtDistance(totalKm, unit)}` : ''}`
+                          : ''}
+                      </p>
+                    ) : null}
+                    {!timed && ex.sets.some((s) => s.targetReps) ? (
                       <p className="tabular mt-0.5 truncate text-xs font-semibold text-brand-400">
                         Target {ex.sets.map((s) => s.targetReps ?? '—').join(' → ')}
                         {ex.restSec ? ` · rest ${fmtClock(ex.restSec)}` : ''}
@@ -513,9 +585,13 @@ export function WorkoutActive() {
                         {last.sets
                           .slice(0, 4)
                           .map((s) =>
-                            ex.tracksWeight ? `${fmtWeight(s.weightKg, unit, false)}×${s.reps}` : `${s.reps}`
+                            timed
+                              ? `${fmtStopwatch(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
+                              : ex.tracksWeight
+                                ? `${fmtWeight(s.weightKg, unit, false)}×${s.reps}`
+                                : `${s.reps}`
                           )
-                          .join(' · ')}
+                          .join(timed ? ', ' : ' · ')}
                       </p>
                     ) : (
                       <p className="mt-0.5 text-xs text-[var(--color-fg-muted)]">First time — set a baseline</p>
@@ -561,9 +637,46 @@ export function WorkoutActive() {
                   </div>
                 </div>
 
-                <ul className="flex flex-col gap-1.5">
+                <LogModeToggle
+                  size="sm"
+                  label={`Log ${ex.name} by`}
+                  value={logModeOf(ex)}
+                  onChange={(mode) => setLogMode(exIndex, mode)}
+                />
+
+                <ul className="mt-2.5 flex flex-col gap-1.5">
                   {ex.sets.map((set, setIndex) => (
                     <Fragment key={setIndex}>
+                    {timed ? (
+                    <TimedSetRow
+                      index={setIndex}
+                      set={set}
+                      placeholderSec={
+                        last?.sets[setIndex]?.durationSec ??
+                        ex.sets[setIndex - 1]?.durationSec ??
+                        ex.targetDurationSec
+                      }
+                      placeholderKm={last?.sets[setIndex]?.distanceKm ?? ex.sets[setIndex - 1]?.distanceKm}
+                      onChange={(setPatch) =>
+                        updateExercise(exIndex, (e) => ({
+                          ...e,
+                          sets: e.sets.map((s, i) =>
+                            i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
+                          ),
+                        }))
+                      }
+                      onStop={(durationSec) =>
+                        toggleSetDone(exIndex, setIndex, { durationSec, timerStartedAt: undefined })
+                      }
+                      onToggleDone={() => toggleSetDone(exIndex, setIndex)}
+                      onRemove={() =>
+                        updateExercise(exIndex, (e) => ({
+                          ...e,
+                          sets: e.sets.filter((_, i) => i !== setIndex),
+                        }))
+                      }
+                    />
+                    ) : (
                     <SetRow
                       index={setIndex}
                       set={set}
@@ -586,7 +699,8 @@ export function WorkoutActive() {
                         }))
                       }
                     />
-                  {last?.sets[setIndex] && !set.warmup ? (
+                    )}
+                  {!timed && last?.sets[setIndex] && !set.warmup ? (
                       <li className="tabular -mt-0.5 pl-9 text-[11px] text-[var(--color-fg-muted)]">
                         Last: {ex.tracksWeight ? `${fmtWeight(last.sets[setIndex].weightKg, unit, false)} × ` : ''}
                         {last.sets[setIndex].reps}
@@ -608,7 +722,7 @@ export function WorkoutActive() {
                 ) : null}
 
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {ex.tracksWeight ? (
+                  {ex.tracksWeight && !timed ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -638,17 +752,30 @@ export function WorkoutActive() {
                   ) : null}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => addSet(exIndex)}
-                  className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl
-                    border border-dashed border-[var(--color-line)] text-sm font-semibold
-                    text-[var(--color-fg-muted)] transition-colors duration-200
-                    hover:border-brand-500 hover:text-brand-400"
-                >
-                  <Icon name="plus" size={16} />
-                  Add set
-                </button>
+                {timed && lastSet?.done ? (
+                  <button
+                    type="button"
+                    onClick={() => addSet(exIndex)}
+                    className="mt-2 flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl
+                      bg-brand-500 text-sm font-bold text-ink-950 transition-colors duration-200
+                      hover:bg-brand-400"
+                  >
+                    <Icon name="plus" size={18} />
+                    Add another set
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => addSet(exIndex)}
+                    className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl
+                      border border-dashed border-[var(--color-line)] text-sm font-semibold
+                      text-[var(--color-fg-muted)] transition-colors duration-200
+                      hover:border-brand-500 hover:text-brand-400"
+                  >
+                    <Icon name="plus" size={16} />
+                    Add set
+                  </button>
+                )}
               </Card>
             )
           })}

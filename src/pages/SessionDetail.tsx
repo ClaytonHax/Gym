@@ -16,7 +16,8 @@ import { useWorkouts } from '../hooks/useWorkouts'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { fmtDateLong, fmtDuration, fmtTime } from '../lib/date'
-import { fmtVolume, fmtWeight } from '../lib/units'
+import { fmtDistance, fmtPace, fmtVolume, fmtWeight } from '../lib/units'
+import { fmtDuration as fmtClock, isTimed } from '../lib/logMode'
 import { bestSetOf, estimate1rm, personalRecords } from '../lib/stats'
 
 export function SessionDetail() {
@@ -133,8 +134,12 @@ export function SessionDetail() {
         <h2 className="mb-3 text-lg font-semibold">Exercises</h2>
         <ul className="flex flex-col gap-3">
           {workout.exercises.map((ex, i) => {
-            const best = bestSetOf(ex)
-            const isPr = prIds.has(ex.exerciseId)
+            const timed = isTimed(ex)
+            const best = timed ? undefined : bestSetOf(ex)
+            const isPr = !timed && prIds.has(ex.exerciseId)
+            const doneSets = ex.sets.filter((x) => x.done && !x.warmup)
+            const totalSec = doneSets.reduce((n, x) => n + (x.durationSec ?? 0), 0)
+            const totalKm = doneSets.reduce((n, x) => n + (x.distanceKm ?? 0), 0)
             return (
               <Card as="li" key={`${ex.exerciseId}-${i}`} className="p-3.5">
                 <div className="mb-2.5 flex flex-wrap items-center gap-2">
@@ -148,6 +153,56 @@ export function SessionDetail() {
                   ) : null}
                 </div>
 
+                {timed ? (
+                  <>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                          <th scope="col" className="w-10 pb-1 text-left">
+                            Set
+                          </th>
+                          <th scope="col" className="pb-1 text-right">
+                            Time
+                          </th>
+                          <th scope="col" className="pb-1 text-right">
+                            Distance
+                          </th>
+                          <th scope="col" className="pb-1 text-right">
+                            Pace
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="tabular">
+                        {ex.sets.map((set, j) => (
+                          <tr key={j} className="border-t border-[var(--color-line)]/60">
+                            <th scope="row" className="py-1.5 text-left font-semibold text-[var(--color-fg-muted)]">
+                              {j + 1}
+                            </th>
+                            <td className="py-1.5 text-right font-medium">
+                              {set.durationSec ? fmtClock(set.durationSec) : '—'}
+                            </td>
+                            <td className="py-1.5 text-right font-medium">
+                              {set.distanceKm ? fmtDistance(set.distanceKm, unit) : '—'}
+                            </td>
+                            <td className="py-1.5 text-right text-[var(--color-fg-muted)]">
+                              {(set.durationSec && set.distanceKm
+                                ? fmtPace(set.durationSec, set.distanceKm, unit)
+                                : null) ?? '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {totalSec > 0 ? (
+                      <p className="tabular mt-2 text-xs text-[var(--color-fg-muted)]">
+                        Total {fmtClock(totalSec)}
+                        {totalKm > 0 ? ` · ${fmtDistance(totalKm, unit)}` : ''}
+                        {totalKm > 0 ? ` · avg ${fmtPace(totalSec, totalKm, unit)}` : ''}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
@@ -191,6 +246,9 @@ export function SessionDetail() {
                     ))}
                   </tbody>
                 </table>
+
+                  </>
+                )}
 
                 {best && ex.tracksWeight ? (
                   <p className="tabular mt-2 text-xs text-[var(--color-fg-muted)]">

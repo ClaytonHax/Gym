@@ -1,5 +1,8 @@
 export type Unit = 'kg' | 'lb'
 
+/** How an exercise is logged: weight × reps (missing = 'reps') or by duration. */
+export type LogMode = 'reps' | 'time'
+
 export type MuscleGroup =
   | 'Chest'
   | 'Back'
@@ -19,6 +22,8 @@ export interface Exercise {
   equipment?: string
   /** Bodyweight / cardio moves are logged as reps or time only. */
   tracksWeight: boolean
+  /** Default log mode when added to a session; cardio defaults to 'time'. */
+  logBy?: LogMode
   custom?: boolean
 }
 
@@ -32,6 +37,12 @@ export interface WorkoutSet {
   /** Rate of perceived exertion, 6–10. */
   rpe?: number
   warmup?: boolean
+  /** Timed sets only. */
+  durationSec?: number
+  /** Timed sets only; always stored in km, converted at the edges like weight. */
+  distanceKm?: number
+  /** ISO start of a running stopwatch on this set; cleared when it stops. */
+  timerStartedAt?: string
 }
 
 export interface WorkoutExercise {
@@ -39,6 +50,9 @@ export interface WorkoutExercise {
   name: string
   muscle: MuscleGroup
   tracksWeight: boolean
+  logBy?: LogMode
+  /** Per-set duration target carried from a plan (timed exercises); shown as a placeholder. */
+  targetDurationSec?: number
   sets: WorkoutSet[]
   notes?: string
   /** Prescribed rest after a working set; overrides the global rest preset. */
@@ -103,8 +117,11 @@ export interface PlanExercise {
   name: string
   muscle: MuscleGroup
   tracksWeight: boolean
-  /** One rep-range target per set — its length is the set count. */
+  logBy?: LogMode
+  /** One rep-range target per set — its length is the set count. Empty for timed exercises (sets are open-ended). */
   targets: string[]
+  /** Timed exercises: target duration per set. */
+  targetDurationSec?: number
   restSec?: number
   supersetId?: string
   /** Legacy routines saved before targets existed. */
