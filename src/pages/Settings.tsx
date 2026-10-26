@@ -14,6 +14,7 @@ import {
   Toggle,
 } from '../components/ui'
 import { REST_PRESETS, defaultRestSec, fmtPreset } from '../components/RestTimer'
+import { EditExerciseSheet } from '../components/EditExerciseSheet'
 import { UsernameCard } from '../components/UsernameCard'
 import { NotificationPrefs, PushToggleCard } from '../components/PushSettings'
 import { useAuth } from '../contexts/AuthContext'
@@ -24,8 +25,9 @@ import { useWorkouts } from '../hooks/useWorkouts'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { workoutsToCsv } from '../lib/csv'
+import { exerciseShareUrl } from '../lib/shareExercise'
 import { kgTo, toKg } from '../lib/units'
-import type { Profile, Unit } from '../types'
+import type { Exercise, Profile, Unit } from '../types'
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
@@ -35,6 +37,7 @@ export function Settings() {
   const toast = useToast()
   const navigate = useNavigate()
   const { custom, deleteExercise } = useExercises()
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null)
   const { workouts } = useWorkouts()
   const { entries } = useBodyLog()
 
@@ -52,6 +55,20 @@ export function Settings() {
       profile.goalWeightKg ? String(Math.round(kgTo(unit, profile.goalWeightKg) * 10) / 10) : ''
     )
   }, [profile.displayName, profile.heightCm, profile.goalWeightKg, unit])
+
+  async function shareExercise(ex: Exercise) {
+    const url = exerciseShareUrl(ex)
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: ex.name, text: `Try my "${ex.name}" exercise`, url })
+        return
+      }
+      await navigator.clipboard.writeText(url)
+      toast('Link copied. Send it to a friend.')
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') toast('Could not share that exercise.', 'error')
+    }
+  }
 
   async function save(patch: Partial<Profile>, message?: string) {
     try {
@@ -303,7 +320,7 @@ export function Settings() {
         {custom.length === 0 ? (
           <Card>
             <p className="text-sm text-[var(--color-fg-muted)]">
-              Exercises you create while logging a workout show up here.
+              Exercises you create while logging a workout show up here, where you can edit or share them.
             </p>
           </Card>
         ) : (
@@ -318,6 +335,8 @@ export function Settings() {
                   </span>
                 </span>
                 <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
+                <IconButton icon="share" label={`Share ${ex.name}`} onClick={() => shareExercise(ex)} />
+                <IconButton icon="pencil" label={`Edit ${ex.name}`} onClick={() => setEditingExercise(ex)} />
                 <IconButton
                   icon="trash"
                   label={`Delete ${ex.name}`}
@@ -355,6 +374,8 @@ export function Settings() {
       </Button>
 
       <p className="pb-2 text-center text-xs text-[var(--color-fg-muted)]">Gym Tracker v1.0.0</p>
+
+      <EditExerciseSheet exercise={editingExercise} onClose={() => setEditingExercise(null)} />
 
       <ConfirmSheet
         open={deleteExerciseId !== null}

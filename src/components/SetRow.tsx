@@ -97,12 +97,12 @@ export function SetRow({
   const weightPlaceholder = suggestedWeight > 0 ? fmtNum(kgTo(unit, suggestedWeight)) : '—'
   const repsPlaceholder = suggestedReps > 0 ? String(suggestedReps) : targetReps && !/^\d+$/.test(targetReps) ? targetReps : '—'
   const inputBase =
-    'tabular min-h-11 w-full min-w-0 scroll-my-40 rounded-lg border border-transparent bg-[var(--color-surface)] px-2 text-center font-semibold text-[var(--color-fg)] outline-none placeholder:font-normal placeholder:italic placeholder:text-[var(--color-fg-muted)] focus:border-brand-500'
+    'tabular min-h-11 w-full min-w-0 scroll-my-40 rounded-lg border border-transparent bg-[var(--color-surface)] px-1 text-center text-lg font-semibold text-[var(--color-fg)] outline-none placeholder:font-normal placeholder:italic placeholder:text-[var(--color-fg-muted)] focus:border-brand-500'
 
   return (
     <li className="flex flex-col gap-1">
       <div
-        className={`flex items-center gap-1.5 rounded-xl border px-1.5 py-1.5 transition-colors duration-200
+        className={`flex items-center gap-1 rounded-xl border px-1 py-1.5 transition-colors duration-200
           ${
             set.done
               ? 'border-go-500/40 bg-go-500/10'
@@ -110,7 +110,7 @@ export function SetRow({
           }`}
       >
         <span
-          className={`tabular grid size-8 shrink-0 place-items-center rounded-lg text-sm font-bold ${
+          className={`tabular grid size-6 shrink-0 place-items-center rounded-md text-xs font-bold ${
             set.warmup ? 'bg-amber-500/20 text-amber-400' : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)]'
           }`}
           title={set.warmup ? 'Warm-up set (not counted in totals)' : undefined}
@@ -166,7 +166,7 @@ export function SetRow({
           onChange={(e) => commitReps(e.target.value)}
           aria-label={`Set ${index + 1} reps`}
           placeholder={repsPlaceholder}
-          className={`${inputBase} !w-16 shrink-0 px-1`}
+          className={`${inputBase} !w-14 shrink-0 px-1`}
         />
 
         <button
@@ -177,7 +177,7 @@ export function SetRow({
               ? `Set ${index + 1} options, effort ${set.rpe}`
               : `Set ${index + 1} options: warm-up, effort, remove`
           }
-          className={`tabular grid size-11 shrink-0 place-items-center rounded-lg text-xs font-bold transition-colors duration-200 ${
+          className={`tabular grid size-10 shrink-0 place-items-center rounded-lg text-xs font-bold transition-colors duration-200 ${
             set.rpe
               ? 'bg-violet-500/20 text-violet-200'
               : 'text-[var(--color-fg-muted)] hover:bg-[var(--color-surface)] hover:text-[var(--color-fg)]'
@@ -193,7 +193,7 @@ export function SetRow({
           onClick={complete}
           aria-label={set.done ? `Mark set ${index + 1} not done` : `Log set ${index + 1} as done`}
           aria-pressed={set.done}
-          className={`grid size-11 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${
+          className={`grid size-10 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${
             set.done
               ? 'bg-go-500 text-ink-950'
               : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] hover:text-go-400'

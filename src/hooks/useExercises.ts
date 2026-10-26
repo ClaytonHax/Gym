@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { addDoc, collection, deleteDoc, doc, onSnapshot } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { BUILTIN_EXERCISES } from '../data/exercises'
@@ -39,6 +39,14 @@ export function useExercises() {
     [user]
   )
 
+  const updateExercise = useCallback(
+    async (id: string, exercise: Omit<Exercise, 'id' | 'custom'>) => {
+      if (!user) throw new Error('Not signed in')
+      await setDoc(doc(db, 'users', user.uid, 'exercises', id), exercise)
+    },
+    [user]
+  )
+
   const deleteExercise = useCallback(
     async (id: string) => {
       if (!user) throw new Error('Not signed in')
@@ -47,5 +55,5 @@ export function useExercises() {
     [user]
   )
 
-  return { exercises, custom, byId, addExercise, deleteExercise }
+  return { exercises, custom, byId, addExercise, updateExercise, deleteExercise }
 }

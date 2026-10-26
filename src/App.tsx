@@ -13,6 +13,7 @@ import { Body } from './pages/Body'
 import { Dashboard } from './pages/Dashboard'
 import { FriendProfile, UserLookup } from './pages/FriendProfile'
 import { Friends } from './pages/Friends'
+import { ImportExercise } from './pages/ImportExercise'
 import { History } from './pages/History'
 import { Login } from './pages/Login'
 import { Notifications } from './pages/Notifications'
@@ -117,6 +118,7 @@ function Gate() {
         <Route path="/friends" element={<Friends />} />
         <Route path="/friends/:uid" element={<FriendProfile />} />
         <Route path="/add/:uid" element={<AddByUid />} />
+        <Route path="/x/:code" element={<ImportExercise />} />
         <Route path="/p/:pid" element={<SharedPlan />} />
         <Route path="/u/:username" element={<UserLookup />} />
         <Route path="/notifications" element={<Notifications />} />
