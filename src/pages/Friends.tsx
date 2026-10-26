@@ -75,6 +75,7 @@ interface Entry {
 }
 
 function Leaderboard({ entries, onNudge }: { entries: Entry[]; onNudge: (p: PublicProfile) => void }) {
+  const { canNudge } = useSocial()
   const { profile } = useSettings()
   const [metric, setMetric] = useState<BoardMetric>('workouts')
   const [period, setPeriod] = useState<Period>('week')
@@ -205,7 +206,7 @@ function Leaderboard({ entries, onNudge }: { entries: Entry[]; onNudge: (p: Publ
                   {row}
                 </Link>
               )}
-              {idle && e.profile ? (
+              {idle && e.profile && canNudge(e.uid, e.stats) ? (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -256,7 +257,7 @@ function FeedTab({ uids, profileOf }: { uids: string[]; profileOf: (uid: string)
 }
 
 function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: PublicProfile) => void }) {
-  const { friends, incoming, outgoing, acceptRequest, declineRequest } = useSocial()
+  const { friends, incoming, outgoing, acceptRequest, declineRequest, canNudge } = useSocial()
   const toast = useToast()
   const [busy, setBusy] = useState<string | null>(null)
   // Requests carry the usernames from when they were sent; show the current ones.
@@ -367,7 +368,7 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
                       <StreakBadge count={streak} unit={f.stats?.streak.unit ?? 'day'} size="sm" />
                     ) : null}
                   </Link>
-                  {f.profile ? (
+                  {f.profile && canNudge(f.uid, f.stats) ? (
                     <Button
                       size="sm"
                       variant="ghost"

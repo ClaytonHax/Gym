@@ -11,7 +11,7 @@ import { challengeState, daysSince, friendAtRisk, liveStreak, metricValue, rankL
 /** Home-screen slice of the friends system: this week's race + who needs a nudge. */
 export function FriendsPulse() {
   const { user } = useAuth()
-  const { me, friends, friendsLoading, challenges } = useSocial()
+  const { me, friends, friendsLoading, challenges, canNudge } = useSocial()
   const { stats } = useMyPublicStats()
   const [nudging, setNudging] = useState<PublicProfile | null>(null)
   const uid = user?.uid ?? ''
@@ -50,8 +50,8 @@ export function FriendsPulse() {
   const ranks = rankWithTies(ranked.map((r) => r.value))
   const myIdx = ranked.findIndex((r) => r.isMe)
   const myRank = ranks[myIdx]
-  const atRisk = friends.find((f) => f.profile && friendAtRisk(f.stats))
-  const idle = friends.find((f) => (daysSince(f.stats?.lastWorkoutAt) ?? 99) >= 3 && f.profile)
+  const atRisk = friends.find((f) => f.profile && friendAtRisk(f.stats) && canNudge(f.uid, f.stats))
+  const idle = friends.find((f) => (daysSince(f.stats?.lastWorkoutAt) ?? 99) >= 3 && f.profile && canNudge(f.uid, f.stats))
   const live = challenges.filter((c) => c.accepted.includes(uid) && challengeState(c) === 'active').length
 
   return (

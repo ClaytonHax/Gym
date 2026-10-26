@@ -155,7 +155,7 @@ export function FriendProfile() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { profile: settings } = useSettings()
-  const { friends, isFriend, unfriend, challenges } = useSocial()
+  const { friends, isFriend, unfriend, challenges, canNudge } = useSocial()
   const toast = useToast()
   const { stats: myStats, workouts } = useMyPublicStats()
   const friend = friends.find((f) => f.uid === friendUid)
@@ -260,10 +260,12 @@ export function FriendProfile() {
 
       {friendNow ? (
         <>
-          <div className="grid grid-cols-2 gap-2">
-            <Button size="lg" icon="hand" onClick={() => setNudging(profile)}>
-              Nudge
-            </Button>
+          <div className={`grid gap-2 ${canNudge(profile.uid, stats) ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {canNudge(profile.uid, stats) ? (
+              <Button size="lg" icon="hand" onClick={() => setNudging(profile)}>
+                Nudge
+              </Button>
+            ) : null}
             <Button size="lg" variant="secondary" icon="swords" onClick={() => setChallenging(true)}>
               Challenge
             </Button>

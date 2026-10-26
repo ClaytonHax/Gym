@@ -28,9 +28,11 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { dayKey } from '../lib/date'
 import { sendPush } from '../lib/push'
 import {
   challengeState,
+  daysSince,
   describeNotification,
   nameKeys,
   normalizeUsername,
@@ -88,6 +90,8 @@ interface SocialValue {
   declineRequest: (req: FriendRequest) => Promise<void>
   unfriend: (uid: string) => Promise<void>
   nudge: (uid: string, text: string) => Promise<'sent' | 'already'>
+  /** A friend can be nudged until they've trained today, or you've already nudged them today. */
+  canNudge: (uid: string, stats: PublicStats | undefined) => boolean
   react: (ownerUid: string, activityId: string, workoutName: string, reaction: Reaction | null) => Promise<void>
   createChallenge: (input: {
     title: string
@@ -632,18 +636,53 @@ export function SocialProvider({ children }: { children: ReactNode }) {
     [needUid, challenges, notify]
   )
 
+  // Who you've nudged today (the server allows one per friend per day), remembered across reloads.
+  const nudgeKey = `gym.nudged.${dayKey()}`
+  const [nudgedToday, setNudgedToday] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(nudgeKey) ?? '[]') as string[]
+    } catch {
+      return []
+    }
+  })
+  const markNudged = useCallback(
+    (to: string) => {
+      setNudgedToday((prev) => {
+        if (prev.includes(to)) return prev
+        const next = [...prev, to]
+        try {
+          localStorage.setItem(nudgeKey, JSON.stringify(next))
+        } catch {
+          // Fine — the button just comes back after a reload.
+        }
+        return next
+      })
+    },
+    [nudgeKey]
+  )
+
+  const canNudge = useCallback(
+    (to: string, stats: PublicStats | undefined) =>
+      !nudgedToday.includes(to) && daysSince(stats?.lastWorkoutAt) !== 0,
+    [nudgedToday]
+  )
+
   const nudge = useCallback(
     async (to: string, text: string): Promise<'sent' | 'already'> => {
       try {
         await notify(to, 'nudge', String(utcDayNumber()), { text })
+        markNudged(to)
         return 'sent'
       } catch (err) {
         // The day's nudge doc already exists, so the write became a forbidden update.
-        if ((err as { code?: string }).code === 'permission-denied') return 'already'
+        if ((err as { code?: string }).code === 'permission-denied') {
+          markNudged(to)
+          return 'already'
+        }
         throw err
       }
     },
-    [notify]
+    [notify, markNudged]
   )
 
   const react = useCallback(
@@ -785,6 +824,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       declineRequest,
       unfriend,
       nudge,
+      canNudge,
       react,
       createChallenge,
       joinChallenge,
@@ -818,6 +858,7 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       declineRequest,
       unfriend,
       nudge,
+      canNudge,
       react,
       createChallenge,
       joinChallenge,
