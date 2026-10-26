@@ -123,6 +123,10 @@ export interface Profile {
   restSec?: number
   /** Let a plan's per-exercise rest replace `restSec`. Missing means off. */
   restFollowsPlan?: boolean
+  /** One-time walkthroughs already shown, e.g. 'train-v2'. */
+  seenTours?: string[]
+  /** Vibration on taps and logged sets. Missing means on. */
+  haptics?: boolean
 }
 
 export interface PersonalRecord {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Icon } from './Icon'
 import { Button, Field, Sheet } from './ui'
+import { openTrainTour } from './train/TrainTour'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
@@ -278,6 +279,8 @@ export function ProfileSetup() {
   const close = useCallback(() => {
     snooze()
     setDismissed(true)
+    // Onboarding chain: the walkthrough follows setup, once.
+    openTrainTour({ unseenOnly: true })
   }, [])
 
   // Never interrupt a session in progress.

@@ -8,6 +8,7 @@ import {
   ConfirmSheet,
   Field,
   IconButton,
+  ListRow,
   PageTitle,
   SectionHeader,
   Segmented,
@@ -15,6 +16,7 @@ import {
 } from '../components/ui'
 import { REST_PRESETS, defaultRestSec, fmtPreset } from '../components/RestTimer'
 import { EditExerciseSheet } from '../components/EditExerciseSheet'
+import { openTrainTour } from '../components/train/TrainTour'
 import { UsernameCard } from '../components/UsernameCard'
 import { NotificationPrefs, PushToggleCard } from '../components/PushSettings'
 import { useAuth } from '../contexts/AuthContext'
@@ -279,6 +281,12 @@ export function Settings() {
               Days you never train, like when your gym is closed. They keep your streak alive.
             </p>
           </div>
+          <Toggle
+            label="Vibration feedback"
+            description="Little buzzes when you tap steppers and log sets."
+            checked={profile.haptics !== false}
+            onChange={(next) => save({ haptics: next })}
+          />
         </Card>
       </section>
 
@@ -366,6 +374,18 @@ export function Settings() {
             Everything is stored in your own Firebase project and cached on this device for
             offline use.
           </p>
+        </Card>
+      </section>
+
+      <section>
+        <SectionHeader title="Help" />
+        <Card>
+          <ListRow
+            leading={<Icon name="sparkles" size={20} className="text-brand-400" />}
+            title="Replay training walkthrough"
+            subtitle="A quick tour of logging, rest and XP"
+            onClick={() => openTrainTour()}
+          />
         </Card>
       </section>
 

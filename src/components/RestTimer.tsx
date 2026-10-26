@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Icon } from './Icon'
 import { fmtClock } from '../lib/date'
 import { useSettings } from '../contexts/SettingsContext'
 
@@ -43,25 +42,14 @@ function alertDone() {
   }
 }
 
-export interface RestTimerHandle {
-  /** Start a countdown. A per-exercise `seconds` (from a plan, when allowed in Settings) wins over the preset. */
-  start: (seconds?: number) => void
-}
-
 export const fmtPreset = (p: number) => (p < 60 ? `${p}s` : fmtClock(p))
 
 /**
- * Countdown driven by a target timestamp rather than an interval counter, so it
- * stays accurate when the browser throttles timers in a background tab.
- *
- * Idle, it's a normal card with the presets. While counting down it collapses to
- * one slim row that sticks to the top, so it never hides the exercise you're on.
+ * Rest countdown state. Driven by a target timestamp rather than an interval
+ * counter, so it stays accurate when the browser throttles a background tab.
+ * The workout screen renders it inside its bottom bar.
  */
-export function RestTimer({
-  onReady,
-}: {
-  onReady: (handle: RestTimerHandle) => void
-}) {
+export function useRestTimer() {
   const { profile, update } = useSettings()
   const duration = defaultRestSec(profile.restSec)
   const [endsAt, setEndsAt] = useState<number | null>(null)
@@ -80,14 +68,13 @@ export function RestTimer({
     setFromPlan(planned)
   }, [])
 
+  /** Start a countdown. A per-exercise `seconds` (from a plan, when allowed in Settings) wins over the preset. */
   const start = useCallback(
     (seconds?: number) => begin(seconds ?? duration, seconds !== undefined && seconds !== duration),
     [begin, duration]
   )
 
-  useEffect(() => {
-    onReady({ start })
-  }, [onReady, start])
+  const stop = useCallback(() => setEndsAt(null), [])
 
   useEffect(() => {
     if (endsAt === null) return
@@ -105,106 +92,16 @@ export function RestTimer({
     return () => window.clearInterval(id)
   }, [endsAt])
 
+  /** Pick the default rest length; a countdown already running restarts at it. */
   function choose(seconds: number) {
     void update({ restSec: seconds })
     if (endsAt !== null) begin(seconds, false)
   }
 
-  function addThirty() {
-    if (endsAt === null) return
-    setEndsAt(endsAt + 30_000)
+  const addThirty = useCallback(() => {
+    setEndsAt((e) => (e === null ? e : e + 30_000))
     setTotal((t) => t + 30)
-  }
+  }, [])
 
-  const running = endsAt !== null
-  const pct = running && total > 0 ? (remaining / total) * 100 : 0
-  const bar = (
-    <div className="h-1 bg-[var(--color-surface-2)]">
-      <div
-        className="h-full bg-brand-500 transition-[width] duration-200 ease-linear motion-reduce:transition-none"
-        style={{ width: `${pct}%` }}
-      />
-    </div>
-  )
-
-  if (running) {
-    return (
-      <div className="card sticky top-2 z-20 overflow-hidden p-0 shadow-lg shadow-black/30">
-        <div className="flex items-center gap-2 p-2">
-          <button
-            type="button"
-            onClick={() => setEndsAt(null)}
-            aria-label="Stop rest timer"
-            className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-500 text-ink-950 transition-colors duration-200"
-          >
-            <Icon name="pause" size={20} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <p className="tabular font-display text-2xl font-semibold leading-none" aria-live="off">
-              {fmtClock(remaining)}
-            </p>
-            <p className="mt-0.5 truncate text-sm text-[var(--color-fg-muted)]">
-              Resting, of {fmtClock(total)}
-              {fromPlan ? ' (set by your plan)' : ''}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={addThirty}
-            className="min-h-11 shrink-0 rounded-lg bg-[var(--color-surface-2)] px-3 text-sm font-bold transition-colors duration-200 hover:text-brand-400"
-          >
-            +30s
-          </button>
-          <button
-            type="button"
-            onClick={() => setEndsAt(null)}
-            className="min-h-11 shrink-0 rounded-lg bg-[var(--color-surface-2)] px-3 text-sm font-bold transition-colors duration-200 hover:text-brand-400"
-          >
-            Skip
-          </button>
-        </div>
-        {bar}
-      </div>
-    )
-  }
-
-  return (
-    <div className="card overflow-hidden p-0">
-      <div className="flex items-center gap-3 p-3">
-        <button
-          type="button"
-          onClick={() => start()}
-          aria-label="Start rest timer"
-          className="grid size-11 shrink-0 place-items-center rounded-xl bg-[var(--color-surface-2)] text-brand-400 transition-colors duration-200 hover:bg-brand-500/15"
-        >
-          <Icon name="clock" size={22} />
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold">Rest timer</p>
-          <p className="text-sm text-[var(--color-fg-muted)]">
-            Starts by itself after each strength set. Rest: <span className="tabular font-semibold text-[var(--color-fg)]">{fmtClock(duration)}</span>
-            {profile.restFollowsPlan ? ', unless the exercise shows its own.' : '.'}
-          </p>
-        </div>
-      </div>
-      <div role="group" aria-label="Rest length" className="grid grid-cols-4 gap-1.5 px-3 pb-3">
-        {REST_PRESETS.map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => choose(p)}
-            aria-pressed={duration === p}
-            className={`tabular min-h-11 rounded-lg text-sm font-bold transition-colors duration-200
-              ${
-                duration === p
-                  ? 'bg-brand-500 text-ink-950'
-                  : 'bg-[var(--color-surface-2)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
-              }`}
-          >
-            {fmtPreset(p)}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
+  return { running: endsAt !== null, remaining, total, fromPlan, start, stop, addThirty, duration, choose }
 }

@@ -5,6 +5,7 @@ import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { fmtDuration } from '../lib/date'
 import { SocialSync } from './SocialSync'
 import { ProfileSetup } from './ProfileSetup'
+import { TrainTourHost } from './train/TrainTour'
 import { PublicPlanSeeder } from './plans'
 import { useSocial } from '../contexts/SocialContext'
 import { PlanSyncProvider } from '../contexts/PlanSyncContext'
@@ -89,7 +90,10 @@ function ActiveWorkoutBar() {
 export function AppShell() {
   const { pathname } = useLocation()
   const { incoming, unread } = useSocial()
+  const { active } = useActiveWorkout()
   const friendsBadge = incoming.length + unread
+  // Mid-workout the Train screen brings its own bottom bar (the big Log button), so the tabs step aside.
+  const inLesson = Boolean(active) && pathname === '/workout'
 
   // A fresh route should start at the top, like a native screen push.
   useEffect(() => {
@@ -114,14 +118,16 @@ export function AppShell() {
       </div>
 
       {/* Bottom padding clears the nav bar, the centre Train button that rises above it, the active-workout strip and the install banner. */}
-      <main id="main" className="mx-auto w-full max-w-2xl px-4 pb-56 pt-4">
+      <main id="main" className={`mx-auto w-full max-w-2xl px-4 pt-4 ${inLesson ? 'pb-8' : 'pb-56'}`}>
         <Outlet />
       </main>
 
       <SocialSync />
       <ProfileSetup />
+      <TrainTourHost />
       <PublicPlanSeeder />
 
+      {inLesson ? null : (
       <nav
         aria-label="Main"
         className="kb-hide safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-[var(--color-line)]
@@ -187,6 +193,7 @@ export function AppShell() {
           ))}
         </ul>
       </nav>
+      )}
     </div>
     </PlanSyncProvider>
   )

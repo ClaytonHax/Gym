@@ -1,56 +1,53 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Icon, type IconName } from '../components/Icon'
-import {
-  Badge,
-  Button,
-  Card,
-  ConfirmSheet,
-  IconButton,
-  Sheet,
-  Spinner,
-} from '../components/ui'
+import { Button, Card, ConfirmSheet, IconButton, Sheet, Spinner, Toggle } from '../components/ui'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { PhotoCapture } from '../components/proofs'
 import { PlateCalculator } from '../components/PlateCalculator'
 import { StartScreen } from './StartScreen'
-import { RestTimer, type RestTimerHandle } from '../components/RestTimer'
-import { SetRow } from '../components/SetRow'
-import { TimedSetRow } from '../components/TimedSetRow'
+import { REST_PRESETS, fmtPreset, useRestTimer } from '../components/RestTimer'
 import { LogModeToggle } from '../components/LogModeToggle'
-import { ExerciseGuide } from '../components/ExerciseGuide'
-import { ExerciseNotes } from '../components/ExerciseNotes'
+import { LessonTopBar } from '../components/train/LessonTopBar'
+import { ExerciseRail } from '../components/train/ExerciseRail'
+import { ExerciseFocus } from '../components/train/ExerciseFocus'
+import { LogBar, type Feedback } from '../components/train/LogBar'
+import { UpNext } from '../components/train/UpNext'
+import { FinishFlow } from '../components/train/FinishFlow'
+import { shownValues } from '../components/train/setValues'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { useBodyLog } from '../hooks/useBodyLog'
+import { usePlans } from '../hooks/usePlans'
 import { useRoutines } from '../hooks/useRoutines'
 import { useWorkouts } from '../hooks/useWorkouts'
+import { useXp } from '../hooks/useXp'
 import { inBattleRange, postProof } from '../hooks/useChallengeProofs'
-import { MUSCLE_COLORS, isDumbbellExercise, usesPlates } from '../data/exercises'
-import { dayKey, fmtClock, fmtDuration } from '../lib/date'
+import { isDumbbellExercise, usesPlates } from '../data/exercises'
+import { dayKey, fmtDuration } from '../lib/date'
 import type { PhotoSvg } from '../lib/photoSvg'
 import { challengeState } from '../lib/social'
-import { fmtDuration as fmtStopwatch, fmtTargetDuration, isTimed, logModeOf } from '../lib/logMode'
-import { fmtDistance, fmtVolume, fmtWeight, step } from '../lib/units'
+import { fmtDuration as fmtStopwatch, isTimed, logModeOf } from '../lib/logMode'
+import { fmtVolume, fmtWeight } from '../lib/units'
 import { DEFAULT_BODY_WEIGHT_KG, estimateCalories } from '../lib/calories'
 import { stripUndefined } from '../lib/clean'
+import { haptic } from '../lib/haptics'
+import { XP_RULES, exercisesXp, levelFor, setXp } from '../lib/xp'
+import { dailyQuests, todayQuestStats } from '../lib/quests'
+import { computeStreaks } from '../lib/streaks'
 import {
-  aimLabel,
   completeUnfinished,
   emptySet,
-  fmtMinutes,
   keyOf,
   lastSetsFull,
   needsKeys,
   newKey,
-  repSuggestion,
   sessionDurationSec,
   stripKeys,
   swapExercise,
-  timedPlaceholders,
   toWorkoutExercise,
   unfinishedSummary,
   withKeys,
@@ -60,11 +57,9 @@ import {
   completedSetCount,
   estimate1rm,
   lastPerformance,
-  personalRecords,
   volumeOf,
 } from '../lib/stats'
 import { linkedToNext, moveItem, newSupersetId, supersetColor, toggleSupersetWithNext } from '../lib/supersets'
-import { HOLD_HANDLE_CLASS, useHoldToReorder } from '../hooks/useHoldToReorder'
 import type { ActiveWorkout, Exercise, LogMode, Workout, WorkoutExercise, WorkoutSet } from '../types'
 
 /**
@@ -145,7 +140,20 @@ const skipsRest = (ex: WorkoutExercise) => isTimed(ex) || ex.muscle === 'Cardio'
 /** One exercise counts as finished once every set on it is ticked. */
 const exerciseDone = (ex: WorkoutExercise) => ex.sets.length > 0 && ex.sets.every((s) => s.done)
 
-const CHEERS = ['Exercise complete! Keep it rolling.', 'Nailed it. Next up!', 'One down. You’re on a roll.']
+/** Stable key for an exercise card (falls back to position for sessions saved before keys existed). */
+const exKeyOf = (ex: WorkoutExercise, i: number) => keyOf(ex, `${ex.exerciseId}-${i}`)
+
+/** Exercises whose best done working set beats the all-time record (a first-ever session has nothing to beat). */
+function countSessionPrs(exercises: WorkoutExercise[], records: Map<string, number>): number {
+  let n = 0
+  for (const ex of exercises) {
+    const prior = records.get(ex.exerciseId)
+    if (!ex.tracksWeight || isTimed(ex) || !prior) continue
+    const best = Math.max(0, ...ex.sets.filter((s) => s.done && !s.warmup).map((s) => estimate1rm(s.weightKg, s.reps)))
+    if (best > prior + 0.01) n++
+  }
+  return n
+}
 
 function MenuRow({
   icon,
@@ -174,9 +182,6 @@ function MenuRow({
   )
 }
 
-const CHIP =
-  'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[var(--color-line)] px-3.5 text-sm font-semibold text-[var(--color-fg-muted)] transition-colors duration-200 hover:border-brand-500 hover:text-brand-400'
-
 /* -------------------------------------------------------------------------- */
 /* Active screen                                                               */
 /* -------------------------------------------------------------------------- */
@@ -184,7 +189,7 @@ const CHIP =
 export function WorkoutActive() {
   const navigate = useNavigate()
   const toast = useToast()
-  const { profile } = useSettings()
+  const { profile, update: updateProfile } = useSettings()
   const unit = profile.unit
   const { active, save, hydrated } = useActiveWorkout()
   const { user } = useAuth()
@@ -192,6 +197,10 @@ export function WorkoutActive() {
   const { workouts, saveWorkout } = useWorkouts()
   const { saveRoutine } = useRoutines()
   const { latest: latestBody } = useBodyLog()
+  const { activeState, isRestDay } = usePlans()
+  const xp = useXp()
+  const records = xp.records
+  const rest = useRestTimer()
 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
@@ -212,15 +221,19 @@ export function WorkoutActive() {
   // Workout-level and per-exercise option sheets.
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuFor, setMenuFor] = useState<number | null>(null)
-  // Cards open on the exercise you're on; tapping a header overrides that either way.
-  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({})
-  const prevDoneCount = useRef<number | null>(null)
-  const timerRef = useRef<RestTimerHandle | null>(null)
-  const reorder = useHoldToReorder((from, to) => moveExercise(from, to))
-
-  const onTimerReady = useCallback((handle: RestTimerHandle) => {
-    timerRef.current = handle
-  }, [])
+  // Focus follows the exercise's key, so reordering or removing others never moves it.
+  const [focusKey, setFocusKey] = useState<string | null>(null)
+  // A done set that's been reopened for editing.
+  const [editing, setEditing] = useState<{ exKey: string; setKey: string } | null>(null)
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const [confetti, setConfetti] = useState<{ key: number; intensity: 'small' | 'big' }>({ key: 0, intensity: 'small' })
+  const feedbackId = useRef(0)
+  const activeRef = useRef<ActiveWorkout | null>(null)
+  const focusKeyRef = useRef<string | null>(null)
+  const advanceTimer = useRef<number | undefined>(undefined)
+  const repsRef = useRef<HTMLDivElement>(null)
+  const scrolledFor = useRef<string | null>(null)
+  activeRef.current = active ?? null
 
   useEffect(() => {
     if (!active) return
@@ -246,39 +259,57 @@ export function WorkoutActive() {
     if (active && needsKeys(active)) save((prev) => (prev ? withKeys(prev) : prev))
   }, [active, save])
 
-  const records = useMemo(
-    () => new Map(personalRecords(workouts).map((r) => [r.exerciseId, r.estimated1rmKg])),
-    [workouts]
-  )
+  useEffect(() => () => window.clearTimeout(advanceTimer.current), [])
 
   const bestDurations = useMemo(() => bestDurationByExercise(workouts), [workouts])
 
-  const totalSets = active ? active.exercises.reduce((n, e) => n + e.sets.length, 0) : 0
-  const doneSets = active ? active.exercises.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0) : 0
-
+  const exs = active?.exercises ?? []
+  const totalSets = exs.reduce((n, e) => n + e.sets.length, 0)
+  const doneSets = exs.reduce((n, e) => n + e.sets.filter((s) => s.done).length, 0)
   const volume = useMemo(() => (active ? volumeOf(active.exercises) : 0), [active])
   const setsDone = useMemo(() => (active ? completedSetCount(active.exercises) : 0), [active])
 
-  const currentIdx = active ? active.exercises.findIndex((e) => !exerciseDone(e)) : -1
-  const doneExercises = active ? active.exercises.filter(exerciseDone).length : 0
+  // Where the lesson is: the focused exercise, defaulting to the first one not finished.
+  const firstOpen = exs.findIndex((e) => !exerciseDone(e))
+  const byKey = focusKey ? exs.findIndex((e, i) => exKeyOf(e, i) === focusKey) : -1
+  const focusIdx = byKey >= 0 ? byKey : firstOpen >= 0 ? firstOpen : Math.max(0, exs.length - 1)
+  const ex: WorkoutExercise | undefined = exs[focusIdx]
+  const focusedKey = ex ? exKeyOf(ex, focusIdx) : null
+  focusKeyRef.current = focusedKey
 
-  // Finishing an exercise earns a cheer and glides to the next one.
+  // Pin the default so finishing an exercise doesn't yank focus before the celebration.
   useEffect(() => {
-    const prev = prevDoneCount.current
-    prevDoneCount.current = doneExercises
-    if (!active || prev === null || doneExercises <= prev) return
-    if (currentIdx === -1) {
-      toast('Every exercise done. Finish strong!')
-      return
-    }
-    toast(CHEERS[doneExercises % CHEERS.length])
-    const next = active.exercises[currentIdx]
-    const key = keyOf(next, `${next.exerciseId}-${currentIdx}`)
-    const id = window.setTimeout(() => {
-      document.querySelector(`[data-ex="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 350)
-    return () => window.clearTimeout(id)
-  }, [doneExercises]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (focusedKey && focusedKey !== focusKey) setFocusKey(focusedKey)
+  }, [focusedKey, focusKey])
+
+  // Glide the focus card into view when focus moves (not on first paint).
+  useEffect(() => {
+    if (!focusedKey) return
+    const first = scrolledFor.current === null
+    scrolledFor.current = focusedKey
+    if (first) return
+    const card = document.querySelector('[data-focus-card]')
+    if (!card) return
+    const top = card.getBoundingClientRect().top
+    if (top > 80 && top < window.innerHeight * 0.5) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  }, [focusedKey])
+
+  const focusedId = ex?.exerciseId
+  const last = useMemo(() => (focusedId ? lastPerformance(workouts, focusedId) : null), [workouts, focusedId])
+  const lastFull = useMemo(
+    () => (focusedId && ex && isTimed(ex) ? lastSetsFull(workouts, focusedId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workouts, focusedId, ex && isTimed(ex)]
+  )
+
+  // Session XP shown live in the top bar (the finish bonus is added on the lesson-complete screen).
+  const prsThisSession = useMemo(() => (active ? countSessionPrs(active.exercises, records) : 0), [active, records])
+  const sessionXp = useMemo(
+    () => (active ? exercisesXp(active.exercises, prsThisSession) : 0),
+    [active, prsThisSession]
+  )
 
   // Body weight for the calorie estimate; say so when we had to guess.
   const bodyKg = latestBody?.weightKg ?? DEFAULT_BODY_WEIGHT_KG
@@ -287,9 +318,30 @@ export function WorkoutActive() {
     if (!active || !finishOpen) return null
     const durationSec = sessionDurationSec(active.startedAt, active.exercises)
     return { durationSec, kcal: estimateCalories({ exercises: active.exercises, durationSec }, bodyKg) }
-    // elapsed ticks every second so the wall-clock part stays current while the sheet is open.
+    // elapsed ticks every second so the wall-clock part stays current while the screen is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, finishOpen, bodyKg, elapsed])
+
+  const streakStats = useMemo(
+    () =>
+      computeStreaks(workouts, {
+        isRestDay,
+        planStartDate: activeState?.startDate,
+        weeklyGoal: profile.weeklyGoal,
+      }),
+    [workouts, isRestDay, activeState?.startDate, profile.weeklyGoal]
+  )
+
+  // Quests as they'll stand once this workout is saved, so "Finish a workout" shows as done.
+  const finishQuests = useMemo(() => {
+    if (!active || !finishOpen) return []
+    const stats = todayQuestStats(workouts, xp.byWorkout, xp.prsByWorkout, {
+      exercises: active.exercises,
+      startedAt: active.startedAt,
+      xp: sessionXp + XP_RULES.finish,
+    })
+    return dailyQuests(dayKey(), { ...stats, workouts: stats.workouts + 1, prs: stats.prs + prsThisSession })
+  }, [active, finishOpen, workouts, xp.byWorkout, xp.prsByWorkout, sessionXp, prsThisSession])
 
   // Always updates from the latest stored session, so two edits in one tick never clobber each other.
   const patch = useCallback(
@@ -309,6 +361,23 @@ export function WorkoutActive() {
     [patch]
   )
 
+  function focusExercise(index: number) {
+    const target = activeRef.current?.exercises[index]
+    if (!target) return
+    window.clearTimeout(advanceTimer.current)
+    setEditing(null)
+    setFocusKey(exKeyOf(target, index))
+  }
+
+  /** Next exercise with sets left, looking forward from `from` and wrapping around. */
+  function nextOpenAfter(list: WorkoutExercise[], from: number): number {
+    for (let k = 1; k < list.length; k++) {
+      const i = (from + k) % list.length
+      if (!exerciseDone(list[i])) return i
+    }
+    return -1
+  }
+
   function addExercises(picked: Exercise[]) {
     patch((draft) => ({
       ...draft,
@@ -319,6 +388,7 @@ export function WorkoutActive() {
   function addSet(index: number) {
     // New sets start empty; the previous numbers show as greyed suggestions instead of real values.
     updateExercise(index, (ex) => ({ ...ex, sets: [...ex.sets, emptySet()] }))
+    setEditing(null)
   }
 
   /** Switch an exercise between weight × reps and time, keeping only the sets that still make sense. */
@@ -342,7 +412,17 @@ export function WorkoutActive() {
       const { logBy: _unused, ...rest } = e
       return mode === 'time' ? { ...rest, logBy: 'time' as const, sets } : { ...rest, sets }
     })
+    setEditing(null)
     toast(mode === 'time' ? `Logging ${ex.name} by time` : `Logging ${ex.name} by weight and reps`)
+  }
+
+  function showFeedback(text: string, tone: Feedback['tone'], icon: IconName) {
+    feedbackId.current += 1
+    setFeedback({ id: feedbackId.current, text, tone, icon })
+  }
+
+  function burst(intensity: 'small' | 'big') {
+    setConfetti((c) => ({ key: c.key + 1, intensity }))
   }
 
   /** Tick or untick a set. `mode: 'done'` only ever ticks (used by auto-complete on a typed time). */
@@ -354,7 +434,7 @@ export function WorkoutActive() {
   ) {
     const ex = active?.exercises[exIndex]
     const cur = ex?.sets[setIndex]
-    if (!ex || !cur) return
+    if (!active || !ex || !cur) return
     if (mode === 'done' && cur.done) return
     const wasDone = cur.done
     updateExercise(exIndex, (e) => ({
@@ -363,27 +443,72 @@ export function WorkoutActive() {
         i === setIndex ? dropUndefined({ ...s, ...override, done: mode === 'done' ? true : !s.done }) : s
       ),
     }))
-    const set = { ...cur, ...override }
-    if (wasDone || set.warmup) return
+    if (wasDone) return
 
-    // Timed sets: no 1RM, no auto rest timer — just a nod when it's the longest ever.
-    if (isTimed(ex)) {
+    const set = { ...cur, ...override }
+    haptic(15)
+    const completes = ex.sets.every((s, i) => i === setIndex || s.done)
+    let earned = setXp({ done: true, warmup: set.warmup })
+    let pr = false
+
+    if (!set.warmup && isTimed(ex)) {
+      // Timed sets: no 1RM — just a nod when it's the longest ever.
       const prior = bestDurations.get(ex.exerciseId)
       if (prior && (set.durationSec ?? 0) > prior) toast(`New longest ${ex.name} session!`)
-      return
+    } else if (!set.warmup) {
+      // Live PR check against history — a first-ever session has nothing to beat. One PR per exercise.
+      const prior = records.get(ex.exerciseId)
+      const beats = (w: number, r: number) => estimate1rm(w, r) > (prior ?? 0) + 0.01
+      pr =
+        ex.tracksWeight &&
+        Boolean(prior) &&
+        beats(set.weightKg, set.reps) &&
+        !ex.sets.some((s, i) => i !== setIndex && s.done && !s.warmup && beats(s.weightKg, s.reps))
+    }
+    if (pr) earned += XP_RULES.pr
+    if (completes) earned += XP_RULES.exercise
+
+    if (pr) {
+      showFeedback(`New PR on ${ex.name}! +${earned} XP`, 'xp', 'trophy')
+      burst('big')
+    } else if (completes) {
+      showFeedback(`Exercise complete! +${earned} XP`, 'go', 'check')
+      burst('small')
+    } else {
+      showFeedback(set.warmup ? `Warm-up done +${earned} XP` : `Nice set! +${earned} XP`, 'go', 'zap')
     }
 
-    // Live PR check against history — a first-ever session has nothing to beat.
-    const prior = records.get(ex.exerciseId)
-    if (ex.tracksWeight && prior && estimate1rm(set.weightKg, set.reps) > prior + 0.01) {
-      toast(`New PR on ${ex.name}!`)
+    // Supersets alternate: hop to the partner while it has sets left. Otherwise a finished
+    // exercise celebrates, then focus moves on.
+    const list = active.exercises
+    const group = ex.supersetId ? list.map((e, i) => (e.supersetId === ex.supersetId ? i : -1)).filter((i) => i >= 0) : []
+    const partner = group.length > 1
+      ? [...group.slice(group.indexOf(exIndex) + 1), ...group.slice(0, group.indexOf(exIndex))].find((i) =>
+          list[i].sets.some((s) => !s.done)
+        )
+      : undefined
+    const myKey = exKeyOf(ex, exIndex)
+    if (partner !== undefined) {
+      focusExercise(partner)
+    } else if (completes) {
+      setEditing(null)
+      window.clearTimeout(advanceTimer.current)
+      advanceTimer.current = window.setTimeout(() => {
+        const latest = activeRef.current?.exercises ?? []
+        if (focusKeyRef.current !== myKey) return
+        const from = latest.findIndex((e, i) => exKeyOf(e, i) === myKey)
+        const next = from >= 0 ? nextOpenAfter(latest, from) : -1
+        if (next >= 0) focusExercise(next)
+      }, 700)
     }
+
+    if (set.warmup) return
 
     // Superset partners go back-to-back; rest only after the last exercise in the group.
-    const next = active?.exercises[exIndex + 1]
+    const next = list[exIndex + 1]
     const mid = Boolean(ex.supersetId) && next?.supersetId === ex.supersetId
     if (!mid && !skipsRest(ex) && profile.restTimer === true) {
-      timerRef.current?.start(profile.restFollowsPlan ? ex.restSec : undefined)
+      rest.start(profile.restFollowsPlan ? ex.restSec : undefined)
     }
   }
 
@@ -420,6 +545,7 @@ export function WorkoutActive() {
             }
       ) as WorkoutSet[],
     }))
+    setEditing(null)
     toast('Loaded your last session’s sets.')
   }
 
@@ -459,6 +585,7 @@ export function WorkoutActive() {
     const set = ex?.sets[setIndex]
     if (!ex || !set) return
     updateExercise(exIndex, (e) => ({ ...e, sets: e.sets.filter((_, i) => i !== setIndex) }))
+    setEditing(null)
     toast(`Removed set ${setIndex + 1} of ${ex.name}`, 'info', {
       action: {
         label: 'Undo',
@@ -649,6 +776,7 @@ export function WorkoutActive() {
     }
   }
 
+
   if (!hydrated) {
     return (
       <div className="flex min-h-[50dvh] items-center justify-center text-[var(--color-fg-muted)]">
@@ -660,404 +788,283 @@ export function WorkoutActive() {
 
   if (!active) return <StartScreen onStart={(w) => save(w)} />
 
-  const pct = totalSets ? Math.round((doneSets / totalSets) * 100) : 0
-  const allDone = totalSets > 0 && doneSets === totalSets
-  const menuEx = menuFor !== null ? active.exercises[menuFor] : undefined
+  const allDone = exs.length > 0 && firstOpen === -1
+  const menuEx = menuFor !== null ? exs[menuFor] : undefined
+  const timed = ex ? isTimed(ex) : false
+  const complete = ex ? exerciseDone(ex) : false
+
+  // Which set the big panel is on: a done set being edited, else the first one left.
+  const editIdx =
+    ex && editing && editing.exKey === focusedKey
+      ? ex.sets.findIndex((s, i) => s.done && keyOf(s, String(i)) === editing.setKey)
+      : -1
+  const openIdx = ex ? ex.sets.findIndex((s) => !s.done) : -1
+  const panelIdx = !ex || timed ? -1 : editIdx >= 0 ? editIdx : openIdx
+  const isEditing = editIdx >= 0 && !timed
+
+  const next = ex ? nextOpenAfter(exs, focusIdx) : -1
+  const nextEx = next >= 0 ? exs[next] : undefined
+
+  const paired = ex ? linkedToNext(exs, focusIdx) : false
+  const inSuperset = ex ? paired || linkedToNext(exs, focusIdx - 1) : false
+  const ssColor = inSuperset ? supersetColor(exs, paired ? focusIdx : focusIdx - 1) : undefined
+  const overload = ex && last && !timed ? hitTopOfRange(ex, last.sets) : false
+
+  function focusRepsField() {
+    repsRef.current?.querySelector<HTMLButtonElement>('button[aria-label$="tap to type"]')?.click()
+  }
+
+  /** The one big button: whatever the next sensible action is. */
+  function logBar(): { label: string; tone: 'go' | 'brand' | 'xp'; onPress: () => void } {
+    if (!ex) return { label: 'Add exercise', tone: 'brand', onPress: () => setPickerOpen(true) }
+    if (!isEditing && allDone) return { label: 'Finish workout 🏆', tone: 'xp', onPress: requestFinish }
+    if (ex.sets.length === 0) return { label: 'Add a set', tone: 'brand', onPress: () => addSet(focusIdx) }
+    if (!isEditing && complete) {
+      return { label: 'Next exercise →', tone: 'brand', onPress: () => (next >= 0 ? focusExercise(next) : undefined) }
+    }
+
+    if (timed) {
+      const set = ex.sets[openIdx]
+      if (set.timerStartedAt) {
+        return {
+          label: 'Stop & log',
+          tone: 'go',
+          onPress: () => {
+            const secs = Math.max(0, Math.floor((Date.now() - new Date(set.timerStartedAt as string).getTime()) / 1000))
+            toggleSetDone(focusIdx, openIdx, { durationSec: secs, timerStartedAt: undefined }, 'done')
+          },
+        }
+      }
+      if ((set.durationSec ?? 0) > 0) {
+        return {
+          label: `Log ${fmtStopwatch(set.durationSec ?? 0)}`,
+          tone: 'go',
+          onPress: () => toggleSetDone(focusIdx, openIdx, undefined, 'done'),
+        }
+      }
+      return {
+        label: 'Start timer',
+        tone: 'go',
+        onPress: () =>
+          updateExercise(focusIdx, (e) => ({
+            ...e,
+            sets: e.sets.map((s, i) =>
+              i === openIdx ? { ...s, timerStartedAt: new Date(Date.now() - (s.durationSec ?? 0) * 1000).toISOString() } : s
+            ),
+          })),
+      }
+    }
+
+    const v = shownValues(ex, panelIdx, last?.sets)
+    if (isEditing) {
+      return {
+        label: `Update set ${panelIdx + 1}`,
+        tone: 'go',
+        onPress: () => {
+          setEditing(null)
+          showFeedback(`Set ${panelIdx + 1} updated`, 'go', 'check')
+        },
+      }
+    }
+    if (v.reps <= 0) return { label: 'Set your reps', tone: 'go', onPress: focusRepsField }
+    const w = fmtWeight(v.weightKg, unit)
+    const what = ex.tracksWeight
+      ? `${w} × ${v.reps}`
+      : v.weightKg > 0
+        ? `+${w} × ${v.reps}`
+        : `${v.reps} ${v.reps === 1 ? 'rep' : 'reps'}`
+    const prefix = ex.sets[panelIdx].warmup ? 'Log warm-up' : `Log set ${panelIdx + 1}`
+    return {
+      label: ex.tracksWeight || v.weightKg > 0 ? `${prefix} · ${what}` : `Log ${what}`,
+      tone: 'go',
+      onPress: () => toggleSetDone(focusIdx, panelIdx, { reps: v.reps, weightKg: v.weightKg }),
+    }
+  }
+
+  const bar = logBar()
+  const planDay =
+    active.planDayName && active.planDayIndex !== undefined
+      ? `Day ${active.planDayIndex + 1}${active.planCycle && active.planCycle > 1 ? ` · Round ${active.planCycle}` : ''}`
+      : undefined
+
+  const finishDuration = finishStats?.durationSec ?? elapsed
+  const levelAfter = levelFor(xp.total + sessionXp + XP_RULES.finish)
+  const streakExtends = !streakStats.todayDone
+  // A planned rest day already counts toward a plan streak, so training on one doesn't grow it.
+  const planExtends = streakExtends && !isRestDay?.(dayKey())
+  const streakNow =
+    streakStats.mode === 'plan'
+      ? { current: streakStats.current + (planExtends ? 1 : 0), extends: planExtends }
+      : {
+          // Weekly mode only grows on the workout that reaches the goal.
+          current: streakStats.current + (streakExtends && streakStats.workoutsThisWeek + 1 === streakStats.weeklyGoal ? 1 : 0),
+          extends: streakExtends && streakStats.workoutsThisWeek + 1 === streakStats.weeklyGoal,
+        }
 
   return (
-    <div className="animate-rise flex flex-col gap-4 pb-8">
-      <header className="flex flex-col gap-3 pt-1">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0 flex-1">
-            {renaming ? (
-              <input
-                autoFocus
-                value={active.name}
-                onChange={(e) => patch((d) => ({ ...d, name: e.target.value }))}
-                onBlur={() => setRenaming(false)}
-                onKeyDown={(e) => e.key === 'Enter' && setRenaming(false)}
-                aria-label="Workout name"
-                className="w-full rounded-lg border border-brand-500 bg-[var(--color-surface-2)] px-2 py-1 font-display text-2xl font-semibold tracking-wide outline-none"
+    <>
+      <div className="animate-rise flex flex-col gap-4 pb-48">
+        <LessonTopBar
+          name={active.name}
+          renaming={renaming}
+          onNameChange={(name) => patch((d) => ({ ...d, name }))}
+          onRenameStart={() => setRenaming(true)}
+          onRenameEnd={() => setRenaming(false)}
+          dayLabel={planDay}
+          doneSets={doneSets}
+          totalSets={totalSets}
+          sessionXp={sessionXp}
+          stats={`${fmtDuration(elapsed)} · ${setsDone} ${setsDone === 1 ? 'set' : 'sets'} · ${fmtVolume(volume, unit)}`}
+          onLeave={() => navigate('/')}
+          onMenu={() => setMenuOpen(true)}
+        />
+
+        <Kill2Banner active={active} />
+
+        {exs.length > 0 ? (
+          <ExerciseRail exercises={exs} focusIdx={focusIdx} onFocus={focusExercise} onAdd={() => setPickerOpen(true)} />
+        ) : null}
+
+        {ex ? (
+          <ExerciseFocus
+            key={focusedKey ?? undefined}
+            ex={ex}
+            unit={unit}
+            dumbbell={isDumbbellExercise({ exerciseId: ex.exerciseId, name: ex.name })}
+            last={last ?? undefined}
+            lastFull={lastFull}
+            timed={timed}
+            overload={overload}
+            showPlanRest={Boolean(profile.restFollowsPlan) && profile.restTimer === true}
+            superset={inSuperset ? { color: ssColor } : undefined}
+            panelIndex={panelIdx}
+            editing={isEditing}
+            repsRef={repsRef}
+            onMenu={() => setMenuFor(focusIdx)}
+            onSetChange={(setIndex, p) =>
+              updateExercise(focusIdx, (e) => ({
+                ...e,
+                sets: e.sets.map((s, i) => (i === setIndex ? dropUndefined({ ...s, ...p }) : s)),
+              }))
+            }
+            onEditSet={(setIndex) =>
+              setEditing({ exKey: focusedKey ?? '', setKey: keyOf(ex.sets[setIndex], String(setIndex)) })
+            }
+            onUnlog={(setIndex) => {
+              toggleSetDone(focusIdx, setIndex)
+              setEditing(null)
+            }}
+            onRemoveSet={(setIndex) => removeSet(focusIdx, setIndex)}
+            onAddSet={() => addSet(focusIdx)}
+            onNotes={(text) => updateExercise(focusIdx, (x) => ({ ...x, notes: text }))}
+            onToggleDone={(setIndex, override, mode) => toggleSetDone(focusIdx, setIndex, override, mode)}
+          />
+        ) : (
+          <Card className="flex flex-col items-center gap-3 py-8 text-center">
+            <span className="grid size-12 place-items-center rounded-2xl bg-brand-500/10 text-brand-400">
+              <Icon name="dumbbell" size={24} />
+            </span>
+            <p className="font-semibold">No exercises yet</p>
+            <p className="max-w-[32ch] text-sm text-[var(--color-fg-muted)]">
+              Add your first exercise and start logging sets.
+            </p>
+            <Button icon="plus" onClick={() => setPickerOpen(true)}>
+              Add exercise
+            </Button>
+          </Card>
+        )}
+
+        {ex ? (
+          <UpNext
+            next={nextEx ? { ex: nextEx, index: next } : undefined}
+            onFocusNext={() => focusExercise(next)}
+            onAdd={() => setPickerOpen(true)}
+            notes={active.notes}
+          />
+        ) : null}
+
+        <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Workout">
+          <div className="flex flex-col gap-1.5">
+            <MenuRow
+              icon="pencil"
+              label="Rename workout"
+              onClick={() => {
+                setMenuOpen(false)
+                setRenaming(true)
+              }}
+            />
+            <MenuRow
+              icon="note"
+              label="Workout notes"
+              onClick={() => {
+                setMenuOpen(false)
+                setNotesOpen(true)
+              }}
+            />
+
+            <div className="my-1.5 rounded-xl bg-[var(--color-surface-2)] p-3.5">
+              <Toggle
+                checked={profile.restTimer === true}
+                onChange={(on) => {
+                  void updateProfile({ restTimer: on })
+                  if (!on) rest.stop()
+                }}
+                label="Rest timer"
+                description="Starts by itself after each strength set."
               />
-            ) : (
-              <button
-                type="button"
-                onClick={() => setRenaming(true)}
-                aria-label={`Workout name: ${active.name}. Tap to rename`}
-                className="flex items-center gap-2 text-left"
-              >
-                <h1 className="font-display text-2xl font-semibold tracking-wide">{active.name}</h1>
-                <Icon name="pencil" size={15} className="shrink-0 text-[var(--color-fg-muted)]" />
-              </button>
-            )}
-            {active.planDayName && active.planDayIndex !== undefined ? (
-              <p className="mt-0.5 text-xs font-bold uppercase tracking-[0.14em] text-brand-400">
-                Day {active.planDayIndex + 1}
-                {active.planCycle && active.planCycle > 1 ? ` · Round ${active.planCycle}` : ''}
-              </p>
-            ) : null}
-          </div>
-          <IconButton icon="more" label="Workout menu" onClick={() => setMenuOpen(true)} />
-        </div>
-
-        {/* Chunky progress bar with a live headline, so the one thing to look at is "how far along am I". */}
-        <div className="flex items-center gap-3">
-          <div
-            role="progressbar"
-            aria-label="Sets completed"
-            aria-valuemin={0}
-            aria-valuemax={totalSets}
-            aria-valuenow={doneSets}
-            className="relative h-4 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-2)]"
-          >
-            <div
-              className="relative h-full rounded-full bg-go-500 transition-[width] duration-500 motion-reduce:transition-none"
-              style={{ width: `${pct}%`, minWidth: doneSets > 0 ? '1rem' : 0 }}
-            >
-              <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-white/30" />
-            </div>
-          </div>
-          <span className="tabular w-16 shrink-0 text-right text-sm font-bold text-go-400">
-            {doneSets}/{totalSets}
-          </span>
-        </div>
-
-        <p className="tabular flex items-center gap-1.5 text-sm text-[var(--color-fg-muted)]">
-          <span className="size-2 animate-pulse rounded-full bg-go-500 motion-reduce:animate-none" />
-          {fmtDuration(elapsed)} · {setsDone} {setsDone === 1 ? 'set' : 'sets'} · {fmtVolume(volume, unit)}
-        </p>
-      </header>
-
-      {/* Idle it's a normal card; while counting down it becomes one slim sticky row. */}
-      {profile.restTimer === true ? <RestTimer onReady={onTimerReady} /> : null}
-
-      <Kill2Banner active={active} />
-
-      {active.exercises.length === 0 ? (
-        <Card className="flex flex-col items-center gap-3 py-8 text-center">
-          <span className="grid size-12 place-items-center rounded-2xl bg-brand-500/10 text-brand-400">
-            <Icon name="dumbbell" size={24} />
-          </span>
-          <p className="font-semibold">No exercises yet</p>
-          <p className="max-w-[32ch] text-sm text-[var(--color-fg-muted)]">
-            Add your first exercise and start logging sets.
-          </p>
-          <Button icon="plus" onClick={() => setPickerOpen(true)}>
-            Add exercise
-          </Button>
-        </Card>
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {active.exercises.map((ex, exIndex) => {
-            const exKey = keyOf(ex, `${ex.exerciseId}-${exIndex}`)
-            const complete = exerciseDone(ex)
-            const isOpen = openOverride[exKey] ?? exIndex === currentIdx
-            const doneCountHere = ex.sets.filter((s) => s.done).length
-            const last = lastPerformance(workouts, ex.exerciseId)
-            const lastFull = isTimed(ex) ? lastSetsFull(workouts, ex.exerciseId) : []
-            const timed = isTimed(ex)
-            const dumbbell = isDumbbellExercise({ exerciseId: ex.exerciseId, name: ex.name })
-            const overload = last && !timed ? hitTopOfRange(ex, last.sets) : false
-            const doneTimed = ex.sets.filter((s) => s.done && !s.warmup)
-            const totalSec = doneTimed.reduce((n, s) => n + (s.durationSec ?? 0), 0)
-            const totalKm = doneTimed.reduce((n, s) => n + (s.distanceKm ?? 0), 0)
-            const lastSet = ex.sets[ex.sets.length - 1]
-            const aim = !timed ? aimLabel(ex.sets) : null
-            const nextOpen = ex.sets.findIndex((s) => !s.done)
-            const paired = linkedToNext(active.exercises, exIndex)
-            const inSuperset = paired || linkedToNext(active.exercises, exIndex - 1)
-            const ssColor = inSuperset ? supersetColor(active.exercises, paired ? exIndex : exIndex - 1) : undefined
-            return (
-              <Card
-                as="li"
-                key={exKey}
-                data-ex={exKey}
-                {...reorder.itemProps(exIndex)}
-                style={inSuperset ? { borderLeftColor: ssColor } : undefined}
-                className={`scroll-mt-24 p-3 transition-colors duration-300 ${inSuperset ? 'border-l-4' : ''} ${
-                  complete ? '!border-go-500/40' : ''
-                } ${isOpen && !complete ? 'ring-1 ring-brand-500/40' : ''}`}
-              >
-                {!isOpen ? (
-                  <button
-                    type="button"
-                    onClick={() => setOpenOverride((o) => ({ ...o, [exKey]: true }))}
-                    aria-expanded={false}
-                    aria-label={`Open ${ex.name}, ${doneCountHere} of ${ex.sets.length} sets done`}
-                    className="flex min-h-12 w-full items-center gap-3 text-left"
-                  >
-                    <span
-                      className={`tabular grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold ${
-                        complete ? 'bg-go-500 text-ink-950' : 'bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]'
-                      }`}
-                    >
-                      {complete ? <Icon name="check" size={18} /> : exIndex + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="line-clamp-1 block font-semibold leading-tight">{ex.name}</span>
-                      <span className="tabular block text-sm text-[var(--color-fg-muted)]">
-                        {complete ? 'Complete' : `${doneCountHere}/${ex.sets.length} sets`}
-                        {inSuperset ? ' · Superset' : ''}
-                      </span>
-                    </span>
-                    <Icon name="chevron-down" size={18} className="shrink-0 text-[var(--color-fg-muted)]" />
-                  </button>
-                ) : (
-                  <>
-                    <div {...reorder.handleProps(exIndex)} className={`mb-2.5 flex items-start gap-2 ${HOLD_HANDLE_CLASS}`}>
+              {profile.restTimer === true ? (
+                <>
+                  <div role="group" aria-label="Rest length" className="mt-3 grid grid-cols-4 gap-1.5">
+                    {REST_PRESETS.map((p) => (
                       <button
+                        key={p}
                         type="button"
-                        onClick={() => setOpenOverride((o) => ({ ...o, [exKey]: false }))}
-                        aria-expanded
-                        aria-label={`Collapse ${ex.name}`}
-                        className={`tabular mt-0.5 grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold ${
-                          complete ? 'bg-go-500 text-ink-950' : 'bg-brand-500 text-ink-950'
+                        onClick={() => rest.choose(p)}
+                        aria-pressed={rest.duration === p}
+                        className={`tabular min-h-11 rounded-lg text-sm font-bold transition-colors duration-200 ${
+                          rest.duration === p
+                            ? 'bg-brand-500 text-ink-950'
+                            : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]'
                         }`}
                       >
-                        {complete ? <Icon name="check" size={18} /> : exIndex + 1}
+                        {fmtPreset(p)}
                       </button>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="line-clamp-2 text-base font-semibold leading-tight">{ex.name}</h2>
-                          <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
-                          {inSuperset ? <Badge color={ssColor ?? '#a78bfa'}>Superset</Badge> : null}
-                        </div>
-                        {timed && (ex.targetDurationSec || totalSec > 0) ? (
-                          <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
-                            {ex.targetDurationSec ? `Aim: ${fmtTargetDuration(ex.targetDurationSec)}` : ''}
-                            {ex.targetDurationSec && totalSec > 0 ? ' · ' : ''}
-                            {totalSec > 0
-                              ? `Done so far: ${fmtStopwatch(totalSec)}${totalKm > 0 ? ` · ${fmtDistance(totalKm, unit)}` : ''}`
-                              : ''}
-                          </p>
-                        ) : null}
-                        {aim ? (
-                          <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
-                            {aim}
-                            {ex.restSec && profile.restFollowsPlan && profile.restTimer === true
-                              ? ` · Rest ${fmtClock(ex.restSec)}`
-                              : ''}
-                          </p>
-                        ) : null}
-                        {last ? (
-                          <p className="tabular mt-0.5 text-sm text-[var(--color-fg-muted)]">
-                            Last time:{' '}
-                            {last.sets
-                              .slice(0, 4)
-                              .map((s) =>
-                                timed
-                                  ? `${fmtStopwatch(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
-                                  : ex.tracksWeight
-                                    ? `${fmtWeight(s.weightKg, unit, false)}×${s.reps}`
-                                    : `${s.reps}`
-                              )
-                              .join(timed ? ', ' : ' · ')}
-                          </p>
-                        ) : (
-                          <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-                            New for you. Start light and see how it feels.
-                          </p>
-                        )}
-                        {overload ? (
-                          <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-go-500/15 px-1.5 py-0.5 text-sm font-bold text-go-400">
-                            <Icon name="trending" size={14} />
-                            You hit the top of your target last time. Try adding {step(unit)} {unit}.
-                          </p>
-                        ) : null}
-                      </div>
-                      <IconButton
-                        icon="more"
-                        label={`${ex.name} options`}
-                        onClick={() => setMenuFor(exIndex)}
-                        className="-mr-1 -mt-1"
-                      />
-                    </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      rest.start()
+                      setMenuOpen(false)
+                    }}
+                    className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-[var(--color-surface)] text-sm font-bold hover:text-brand-400"
+                  >
+                    <Icon name="clock" size={16} />
+                    Start rest now
+                  </button>
+                </>
+              ) : null}
+            </div>
 
-                    {!timed ? (
-                      <div
-                        aria-hidden="true"
-                        className="flex items-end gap-1 px-1 text-xs font-semibold leading-tight text-[var(--color-fg-muted)]"
-                      >
-                        <span className="w-6 shrink-0 text-center">Set</span>
-                        <span className="min-w-0 flex-1 text-center">
-                          {ex.tracksWeight
-                            ? dumbbell
-                              ? `${unit} per dumbbell`
-                              : unit
-                            : `Extra ${unit}, optional`}
-                        </span>
-                        <span className="w-14 shrink-0 text-center">Reps</span>
-                        <span className="w-10 shrink-0" />
-                        <span className="w-10 shrink-0" />
-                      </div>
-                    ) : null}
-
-                    <ul className="mt-1.5 flex flex-col gap-1.5">
-                      {ex.sets.map((set, setIndex) => {
-                        const setKey = keyOf(set, `${setIndex}`)
-                        return timed ? (
-                          <TimedSetRow
-                            key={setKey}
-                            index={setIndex}
-                            set={set}
-                            cardioFields={ex.cardioFields}
-                            placeholders={timedPlaceholders(ex, setIndex, lastFull)}
-                            onChange={(setPatch) =>
-                              updateExercise(exIndex, (e) => ({
-                                ...e,
-                                sets: e.sets.map((s, i) =>
-                                  i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
-                                ),
-                              }))
-                            }
-                            onStop={(durationSec) =>
-                              toggleSetDone(exIndex, setIndex, { durationSec, timerStartedAt: undefined }, 'done')
-                            }
-                            onToggleDone={() => toggleSetDone(exIndex, setIndex)}
-                            onAutoDone={() => toggleSetDone(exIndex, setIndex, undefined, 'done')}
-                            onRemove={() => removeSet(exIndex, setIndex)}
-                          />
-                        ) : (
-                          <SetRow
-                            key={setKey}
-                            index={setIndex}
-                            set={set}
-                            tracksWeight={ex.tracksWeight}
-                            suggestion={repSuggestion(ex, setIndex, last?.sets)}
-                            targetReps={set.targetReps}
-                            showSuggestionHint={setIndex === nextOpen}
-                            onChange={(setPatch) =>
-                              updateExercise(exIndex, (e) => ({
-                                ...e,
-                                sets: e.sets.map((s, i) =>
-                                  i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
-                                ),
-                              }))
-                            }
-                            onToggleDone={(override) => toggleSetDone(exIndex, setIndex, override)}
-                            onRemove={() => removeSet(exIndex, setIndex)}
-                          />
-                        )
-                      })}
-                    </ul>
-
-                    {ex.notes !== undefined ? (
-                      <>
-                        <label htmlFor={`notes-${exKey}`} className="mt-2 block text-sm font-semibold">
-                          Notes for {ex.name}
-                        </label>
-                        <textarea
-                          id={`notes-${exKey}`}
-                          rows={2}
-                          value={ex.notes}
-                          onChange={(e) => updateExercise(exIndex, (x) => ({ ...x, notes: e.target.value }))}
-                          placeholder="Seat height, how it felt…"
-                          className="mt-1 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2.5 text-sm outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500"
-                        />
-                      </>
-                    ) : null}
-
-                    {complete ? (
-                      <p className="animate-pop mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-go-500/15 py-2 text-sm font-bold text-go-400">
-                        <Icon name="check" size={16} /> Exercise complete
-                      </p>
-                    ) : null}
-
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      <ExerciseGuide exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
-                      <ExerciseNotes exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
-                    </div>
-
-                    {timed && lastSet?.done ? (
-                      <button
-                        type="button"
-                        onClick={() => addSet(exIndex)}
-                        className="mt-2 flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl
-                          bg-brand-500 text-sm font-bold text-ink-950 transition-colors duration-200
-                          hover:bg-brand-400"
-                      >
-                        <Icon name="plus" size={18} />
-                        Add another set
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => addSet(exIndex)}
-                        className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl
-                          border border-dashed border-[var(--color-line)] text-sm font-semibold
-                          text-[var(--color-fg-muted)] transition-colors duration-200
-                          hover:border-brand-500 hover:text-brand-400"
-                      >
-                        <Icon name="plus" size={16} />
-                        Add set
-                      </button>
-                    )}
-                  </>
-                )}
-              </Card>
-            )
-          })}
-        </ul>
-      )}
-
-      {active.exercises.length > 0 ? (
-        <Button variant="secondary" size="lg" full icon="plus" onClick={() => setPickerOpen(true)}>
-          Add exercise
-        </Button>
-      ) : null}
-
-      {active.notes ? (
-        <Card className="flex gap-2.5">
-          <Icon name="note" size={16} className="mt-0.5 shrink-0 text-[var(--color-fg-muted)]" />
-          <p className="whitespace-pre-wrap text-sm text-[var(--color-fg-muted)]">{active.notes}</p>
-        </Card>
-      ) : null}
-
-      {allDone ? (
-        <div className="animate-pop flex flex-col items-center gap-1 rounded-2xl bg-go-500/15 p-4 text-center">
-          <span className="grid size-12 place-items-center rounded-full bg-go-500 text-ink-950">
-            <Icon name="trophy" size={24} />
-          </span>
-          <p className="font-display text-xl font-semibold">Workout complete!</p>
-          <p className="text-sm text-[var(--color-fg-muted)]">
-            {doneSets} sets, {fmtVolume(volume, unit)} lifted. Lock it in.
-          </p>
-        </div>
-      ) : null}
-
-      <Button size="lg" variant={allDone ? 'go' : 'secondary'} full icon="check" onClick={requestFinish}>
-        Finish workout
-      </Button>
-
-      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Workout">
-        <div className="flex flex-col gap-1.5">
-          <MenuRow
-            icon="pencil"
-            label="Rename workout"
-            onClick={() => {
-              setMenuOpen(false)
-              setRenaming(true)
-            }}
-          />
-          <MenuRow
-            icon="note"
-            label="Workout notes"
-            onClick={() => {
-              setMenuOpen(false)
-              setNotesOpen(true)
-            }}
-          />
-          <MenuRow
-            icon="trash"
-            label="Discard workout"
-            danger
-            onClick={() => {
-              setMenuOpen(false)
-              setDiscardOpen(true)
-            }}
-          />
-        </div>
-      </Sheet>
+            <MenuRow
+              icon="check"
+              label="Finish workout"
+              onClick={() => {
+                setMenuOpen(false)
+                requestFinish()
+              }}
+            />
+            <MenuRow
+              icon="trash"
+              label="Discard workout"
+              danger
+              onClick={() => {
+                setMenuOpen(false)
+                setDiscardOpen(true)
+              }}
+            />
+          </div>
+        </Sheet>
 
       <Sheet open={menuFor !== null} onClose={() => setMenuFor(null)} title={menuEx?.name ?? 'Exercise'}>
         {menuEx && menuFor !== null ? (
@@ -1233,73 +1240,33 @@ export function WorkoutActive() {
         </ul>
       </Sheet>
 
-      <Sheet
+      <FinishFlow
         open={finishOpen}
         onClose={() => setFinishOpen(false)}
-        title="Finish workout"
-        footer={
-          <div className="flex gap-3">
-            <Button variant="secondary" full onClick={() => setFinishOpen(false)}>
-              Keep going
-            </Button>
-            <Button variant="go" full loading={saving} onClick={finish}>
-              {saveError ? 'Try again' : 'Save workout'}
-            </Button>
-          </div>
-        }
-      >
-        <dl className="grid grid-cols-2 gap-3 text-center">
-          {[
-            { label: 'Time', value: fmtMinutes(finishStats?.durationSec ?? elapsed) },
-            { label: 'Sets done', value: String(setsDone) },
-            { label: 'Total lifted', value: fmtVolume(volume, unit) },
-            { label: 'Energy burned', value: `~${finishStats?.kcal ?? 0} kcal (estimate)` },
-          ].map((item) => (
-            <div key={item.label} className="rounded-xl bg-[var(--color-surface-2)] p-3">
-              <dt className="text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
-                {item.label}
-              </dt>
-              <dd className="tabular mt-1 font-display text-xl font-semibold leading-tight">{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-        {usingDefaultWeight ? (
-          <p className="mt-2 text-sm text-[var(--color-fg-muted)]">
-            Based on {DEFAULT_BODY_WEIGHT_KG} kg. Add your weight in Body for a better estimate.
-          </p>
-        ) : null}
-        {proofBattles.length > 0 ? (
-          <div className="mt-4 rounded-xl border border-[var(--color-line)] p-3">
-            <p className="flex items-center gap-2 text-sm font-semibold">
-              <Icon name="camera" size={16} className="text-go-400" />
-              Add proof for {proofBattles.length} {proofBattles.length === 1 ? 'battle' : 'battles'}
-            </p>
-            <p className="mb-3 mt-0.5 text-sm text-[var(--color-fg-muted)]">
-              {proofBattles.map((c) => c.title).join(' · ')}. Without a photo this workout won’t count there.
-            </p>
-            <PhotoCapture value={proofPhoto} onChange={setProofPhoto} />
-          </div>
-        ) : null}
-        <label className="mt-4 flex min-h-11 cursor-pointer items-start gap-3 text-sm">
-          <input
-            type="checkbox"
-            checked={saveAsRoutine}
-            onChange={(e) => setSaveAsRoutine(e.target.checked)}
-            className="mt-0.5 size-5 shrink-0 accent-[var(--color-brand-500)]"
-          />
-          <span>
-            <span className="block font-semibold">Save this workout to reuse later</span>
-            <span className="block text-[var(--color-fg-muted)]">
-              It will show up under My routines on the Train tab.
-            </span>
-          </span>
-        </label>
-        {saveError ? (
-          <p role="alert" className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-300">
-            {saveError}
-          </p>
-        ) : null}
-      </Sheet>
+        onSave={finish}
+        saving={saving}
+        saveError={saveError}
+        stats={{
+          durationSec: finishDuration,
+          sets: setsDone,
+          volumeLabel: fmtVolume(volume, unit),
+          kcal: finishStats?.kcal ?? 0,
+          usingDefaultWeight,
+          defaultWeightKg: DEFAULT_BODY_WEIGHT_KG,
+        }}
+        xp={{
+          session: sessionXp + XP_RULES.finish,
+          prs: prsThisSession,
+          levelBefore: xp.level,
+          levelAfter,
+        }}
+        streak={{ current: streakNow.current, unit: streakStats.mode === 'plan' ? 'day' : 'week', extends: streakNow.extends }}
+        quests={finishQuests}
+        proofBattles={proofBattles.map((c) => ({ id: c.id, title: c.title }))}
+        proofSlot={<PhotoCapture value={proofPhoto} onChange={setProofPhoto} />}
+        saveAsRoutine={saveAsRoutine}
+        onSaveAsRoutine={setSaveAsRoutine}
+      />
 
       <ConfirmSheet
         open={removeAsk !== null}
@@ -1327,6 +1294,22 @@ export function WorkoutActive() {
           navigate('/')
         }}
       />
-    </div>
+      </div>
+
+      <LogBar
+        label={bar.label}
+        tone={bar.tone}
+        onPress={bar.onPress}
+        feedback={feedback}
+        confetti={confetti}
+        rest={{
+          running: rest.running,
+          remaining: rest.remaining,
+          total: rest.total,
+          onAddThirty: rest.addThirty,
+          onSkip: rest.stop,
+        }}
+      />
+    </>
   )
 }
