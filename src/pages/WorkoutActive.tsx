@@ -62,7 +62,7 @@ import {
   personalRecords,
   volumeOf,
 } from '../lib/stats'
-import { linkedToNext, moveItem, newSupersetId, toggleSupersetWithNext } from '../lib/supersets'
+import { linkedToNext, moveItem, newSupersetId, supersetColor, toggleSupersetWithNext } from '../lib/supersets'
 import { HOLD_HANDLE_CLASS, useHoldToReorder } from '../hooks/useHoldToReorder'
 import type { ActiveWorkout, Exercise, LogMode, Workout, WorkoutExercise, WorkoutSet } from '../types'
 
@@ -695,12 +695,14 @@ export function WorkoutActive() {
             const nextOpen = ex.sets.findIndex((s) => !s.done)
             const paired = linkedToNext(active.exercises, exIndex)
             const inSuperset = paired || linkedToNext(active.exercises, exIndex - 1)
+            const ssColor = inSuperset ? supersetColor(active.exercises, paired ? exIndex : exIndex - 1) : undefined
             return (
               <Card
                 as="li"
                 key={keyOf(ex, `${ex.exerciseId}-${exIndex}`)}
                 {...reorder.itemProps(exIndex)}
-                className={`scroll-mt-24 p-3 ${inSuperset ? 'border-l-4 border-l-violet-500' : ''}`}
+                style={inSuperset ? { borderLeftColor: ssColor } : undefined}
+                className={`scroll-mt-24 p-3 ${inSuperset ? 'border-l-4' : ''}`}
               >
                 <div {...reorder.handleProps(exIndex)} className={`mb-2.5 flex items-start gap-2 ${HOLD_HANDLE_CLASS}`}>
                   <Icon name="grip" size={18} className="mt-0.5 -ml-1 shrink-0 text-[var(--color-fg-muted)]" />
@@ -708,7 +710,7 @@ export function WorkoutActive() {
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="line-clamp-2 text-base font-semibold leading-tight">{ex.name}</h2>
                       <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
-                      {inSuperset ? <Badge color="#a78bfa">Superset</Badge> : null}
+                      {inSuperset ? <Badge color={ssColor ?? '#a78bfa'}>Superset</Badge> : null}
                     </div>
                     {timed && (ex.targetDurationSec || totalSec > 0) ? (
                       <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">

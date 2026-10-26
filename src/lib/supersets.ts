@@ -51,3 +51,13 @@ export function moveItem<T extends Groupable>(items: T[], from: number, to: numb
 }
 
 export const newSupersetId = () => `ss-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+
+const SUPERSET_COLORS = ['#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#06b6d4', '#ef4444', '#84cc16']
+
+/** Each superset in the list gets its own colour, by order of first appearance. */
+export function supersetColor(items: Groupable[], i: number): string | undefined {
+  const id = items[i]?.supersetId
+  if (!id) return undefined
+  const ids = [...new Set(items.map((it) => it.supersetId).filter(Boolean))]
+  return SUPERSET_COLORS[ids.indexOf(id) % SUPERSET_COLORS.length]
+}

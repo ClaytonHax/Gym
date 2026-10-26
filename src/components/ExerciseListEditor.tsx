@@ -5,7 +5,7 @@ import { ExercisePicker } from './ExercisePicker'
 import { Button, IconButton } from './ui'
 import { LogModeToggle } from './LogModeToggle'
 import { fmtTargetDuration, isTimed } from '../lib/logMode'
-import { linkedToNext, moveItem, newSupersetId, tidySupersets, toggleSupersetWithNext } from '../lib/supersets'
+import { linkedToNext, moveItem, newSupersetId, supersetColor, tidySupersets, toggleSupersetWithNext } from '../lib/supersets'
 import { HOLD_HANDLE_CLASS, useHoldToReorder } from '../hooks/useHoldToReorder'
 import type { Exercise, LogMode, PlanExercise } from '../types'
 
@@ -21,13 +21,89 @@ function spread(ranges: string[], count: number): string[] {
   return Array.from({ length: count }, (_, i) => ranges[Math.min(i, ranges.length - 1)] ?? '')
 }
 
-function rangesText(targets: string[]): string {
-  return targets.every((t) => t === targets[0]) ? (targets[0] ?? '') : targets.join(', ')
+type RepsMode = 'fixed' | 'range' | 'failure'
+
+function repsMode(v: string): RepsMode {
+  const t = v.trim().toLowerCase()
+  if (t === 'failure') return 'failure'
+  return t.includes('-') ? 'range' : 'fixed'
 }
 
-function parseRanges(text: string): string[] {
-  const list = text.split(',').map((t) => t.trim())
-  return list.length ? list : ['']
+const REPS_MODES: Array<[RepsMode, string]> = [
+  ['fixed', 'Fixed'],
+  ['range', 'Range'],
+  ['failure', 'Failure'],
+]
+
+const REPS_INPUT =
+  'min-h-11 w-full rounded-lg border border-transparent bg-[var(--color-surface)] px-3 text-center text-base font-semibold outline-none focus:border-brand-500'
+
+/** Three ways to set a rep target: one number, a low–high range, or to failure. */
+function RepsEditor({ name, value, onChange }: { name: string; value: string; onChange: (v: string) => void }) {
+  const [mode, setMode] = useState<RepsMode>(() => repsMode(value))
+  const [lo, hi] = value.split('-').map((x) => x.trim())
+  const digits = (x: string) => x.replace(/\D/g, '').slice(0, 3)
+
+  function pick(m: RepsMode) {
+    setMode(m)
+    const n = digits(lo ?? '')
+    onChange(m === 'failure' ? 'failure' : m === 'range' ? `${n}-` : n)
+  }
+
+  return (
+    <div className="mt-3">
+      <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">Reps</span>
+      <div role="group" aria-label={`Rep type for ${name}`} className="mb-2 grid grid-cols-3 gap-1 rounded-lg bg-[var(--color-surface)] p-1">
+        {REPS_MODES.map(([m, label]) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={mode === m}
+            onClick={() => pick(m)}
+            className={`min-h-9 rounded-md text-sm font-semibold ${
+              mode === m ? 'bg-brand-500 text-white' : 'text-[var(--color-fg-muted)]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {mode === 'fixed' ? (
+        <input
+          inputMode="numeric"
+          value={mode === 'fixed' ? digits(value) : ''}
+          onChange={(e) => onChange(digits(e.target.value))}
+          placeholder="10"
+          aria-label={`Reps for ${name}`}
+          className={REPS_INPUT}
+        />
+      ) : mode === 'range' ? (
+        <div className="flex items-center gap-2">
+          <input
+            inputMode="numeric"
+            value={digits(lo ?? '')}
+            onChange={(e) => onChange(`${digits(e.target.value)}-${digits(hi ?? '')}`)}
+            placeholder="8"
+            aria-label={`Minimum reps for ${name}`}
+            className={REPS_INPUT}
+          />
+          <span className="font-semibold text-[var(--color-fg-muted)]">–</span>
+          <input
+            inputMode="numeric"
+            value={digits(hi ?? '')}
+            onChange={(e) => onChange(`${digits(lo ?? '')}-${digits(e.target.value)}`)}
+            placeholder="12"
+            aria-label={`Maximum reps for ${name}`}
+            className={REPS_INPUT}
+          />
+        </div>
+      ) : (
+        <p className="min-h-11 rounded-lg bg-[var(--color-surface)] px-3 py-2.5 text-center text-base font-semibold">
+          To failure
+        </p>
+      )}
+    </div>
+  )
 }
 
 function fromExercise(e: Exercise): PlanExercise {
@@ -121,8 +197,9 @@ export function ExerciseListEditor({
           <li
             key={`${it.exerciseId}-${i}`}
             {...reorder.itemProps(i)}
+            style={inSuperset ? { borderLeftColor: supersetColor(items, paired ? i : i - 1) } : undefined}
             className={`rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-3 ${
-              inSuperset ? 'border-l-4 border-l-violet-500' : ''
+              inSuperset ? 'border-l-4' : ''
             }`}
           >
             <div {...reorder.handleProps(i)} className={`flex items-center gap-1 ${HOLD_HANDLE_CLASS}`}>
@@ -216,22 +293,11 @@ export function ExerciseListEditor({
                   {restSelect(it, i)}
                 </div>
 
-                <label className="mt-3 block">
-                  <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">
-                    Reps
-                  </span>
-                  <input
-                    value={rangesText(it.targets)}
-                    onChange={(e) =>
-                      patchItem(i, {
-                        targets: spread(parseRanges(e.target.value), it.targets.length),
-                      })
-                    }
-                    placeholder="10-15"
-                    aria-label={`Rep range for ${it.name}`}
-                    className="min-h-11 w-full rounded-lg border border-transparent bg-[var(--color-surface)] px-3 text-base font-semibold outline-none focus:border-brand-500"
-                  />
-                </label>
+                <RepsEditor
+                  name={it.name}
+                  value={it.targets[0] ?? ''}
+                  onChange={(v) => patchItem(i, { targets: spread([v], it.targets.length) })}
+                />
               </>
             )}
 
@@ -259,9 +325,8 @@ export function ExerciseListEditor({
         Add exercises
       </Button>
       <p className="text-xs text-[var(--color-fg-muted)]">
-        Reps: type a range such as 8-12, or the word “failure” (keep going until you can't do
-        another). For different goals per set, separate them with commas: 5-9, 10-15. Press and
-        hold an exercise's name to drag it somewhere else. A superset is done back to back, with
+        Reps: pick a single number, a range, or failure (keep going until you can't do
+        another). Press and hold an exercise's name to drag it somewhere else. A superset is done back to back, with
         rest only after the last exercise in it.
       </p>
 
