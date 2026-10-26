@@ -92,17 +92,9 @@ function PathArt() {
 
 function MiniStepper({ value, unit }: { value: string; unit: string }) {
   return (
-    <div className="flex items-center gap-1 rounded-xl bg-[var(--color-surface)] p-1 shadow-sm">
-      <span className="grid size-8 place-items-center rounded-lg bg-[var(--color-surface-2)]">
-        <Icon name="minus" size={14} />
-      </span>
-      <span className="tabular min-w-16 text-center font-display text-2xl leading-none font-bold">
-        {value}
-        <span className="ml-1 text-xs font-medium text-[var(--color-fg-muted)]">{unit}</span>
-      </span>
-      <span className="grid size-8 place-items-center rounded-lg bg-[var(--color-surface-2)]">
-        <Icon name="plus" size={14} />
-      </span>
+    <div className="tabular min-w-20 rounded-xl bg-[var(--color-surface)] px-3 py-1.5 text-center font-display text-2xl leading-none font-bold shadow-sm">
+      {value}
+      <span className="ml-1 text-xs font-medium text-[var(--color-fg-muted)]">{unit}</span>
     </div>
   )
 }
@@ -196,7 +188,7 @@ const SLIDES: Slide[] = [
   },
   {
     title: 'Log a set in one tap',
-    body: 'Numbers fill in from last time. Nudge with − / +, then hit LOG SET.',
+    body: 'Numbers fill in from last time. Tap a box to type a new one, then hit LOG SET.',
     art: <StepperArt />,
   },
   {

@@ -811,7 +811,7 @@ export function WorkoutActive() {
   const overload = ex && last && !timed ? hitTopOfRange(ex, last.sets) : false
 
   function focusRepsField() {
-    repsRef.current?.querySelector<HTMLButtonElement>('button[aria-label$="tap to type"]')?.click()
+    repsRef.current?.querySelector('input')?.focus()
   }
 
   /** The one big button: whatever the next sensible action is. */
