@@ -195,7 +195,7 @@ export function SetRow({
           aria-pressed={set.done}
           className={`grid size-10 shrink-0 place-items-center rounded-lg transition-colors duration-200 ${
             set.done
-              ? 'bg-go-500 text-ink-950'
+              ? 'animate-pop bg-go-500 text-ink-950 shadow-[0_3px_0_var(--color-go-600)]'
               : 'bg-[var(--color-surface)] text-[var(--color-fg-muted)] hover:text-go-400'
           }`}
         >

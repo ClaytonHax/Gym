@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Icon } from '../components/Icon'
+import { Icon, type IconName } from '../components/Icon'
 import {
   Badge,
   Button,
@@ -142,6 +142,38 @@ function defaultName(): string {
 /** Cardio and timed moves don't get an automatic rest countdown. */
 const skipsRest = (ex: WorkoutExercise) => isTimed(ex) || ex.muscle === 'Cardio'
 
+/** One exercise counts as finished once every set on it is ticked. */
+const exerciseDone = (ex: WorkoutExercise) => ex.sets.length > 0 && ex.sets.every((s) => s.done)
+
+const CHEERS = ['Exercise complete! Keep it rolling.', 'Nailed it. Next up!', 'One down. You’re on a roll.']
+
+function MenuRow({
+  icon,
+  label,
+  onClick,
+  danger,
+  disabled,
+}: {
+  icon: IconName
+  label: string
+  onClick: () => void
+  danger?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex min-h-12 w-full flex-1 items-center gap-3 rounded-xl bg-[var(--color-surface-2)] px-3.5 text-left font-semibold
+        transition-colors duration-200 active:scale-[0.99] disabled:opacity-40 ${danger ? 'text-rose-400' : ''}`}
+    >
+      <Icon name={icon} size={18} className={danger ? '' : 'text-[var(--color-fg-muted)]'} />
+      {label}
+    </button>
+  )
+}
+
 const CHIP =
   'inline-flex min-h-11 items-center gap-1.5 rounded-full border border-[var(--color-line)] px-3.5 text-sm font-semibold text-[var(--color-fg-muted)] transition-colors duration-200 hover:border-brand-500 hover:text-brand-400'
 
@@ -177,6 +209,12 @@ export function WorkoutActive() {
   const [removeAsk, setRemoveAsk] = useState<number | null>(null)
   // Swap: the picker opens for that exercise's index.
   const [swapIndex, setSwapIndex] = useState<number | null>(null)
+  // Workout-level and per-exercise option sheets.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuFor, setMenuFor] = useState<number | null>(null)
+  // Cards open on the exercise you're on; tapping a header overrides that either way.
+  const [openOverride, setOpenOverride] = useState<Record<string, boolean>>({})
+  const prevDoneCount = useRef<number | null>(null)
   const timerRef = useRef<RestTimerHandle | null>(null)
   const reorder = useHoldToReorder((from, to) => moveExercise(from, to))
 
@@ -220,6 +258,27 @@ export function WorkoutActive() {
 
   const volume = useMemo(() => (active ? volumeOf(active.exercises) : 0), [active])
   const setsDone = useMemo(() => (active ? completedSetCount(active.exercises) : 0), [active])
+
+  const currentIdx = active ? active.exercises.findIndex((e) => !exerciseDone(e)) : -1
+  const doneExercises = active ? active.exercises.filter(exerciseDone).length : 0
+
+  // Finishing an exercise earns a cheer and glides to the next one.
+  useEffect(() => {
+    const prev = prevDoneCount.current
+    prevDoneCount.current = doneExercises
+    if (!active || prev === null || doneExercises <= prev) return
+    if (currentIdx === -1) {
+      toast('Every exercise done. Finish strong!')
+      return
+    }
+    toast(CHEERS[doneExercises % CHEERS.length])
+    const next = active.exercises[currentIdx]
+    const key = keyOf(next, `${next.exerciseId}-${currentIdx}`)
+    const id = window.setTimeout(() => {
+      document.querySelector(`[data-ex="${key}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 350)
+    return () => window.clearTimeout(id)
+  }, [doneExercises]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Body weight for the calorie estimate; say so when we had to guess.
   const bodyKg = latestBody?.weightKg ?? DEFAULT_BODY_WEIGHT_KG
@@ -601,6 +660,10 @@ export function WorkoutActive() {
 
   if (!active) return <StartScreen onStart={(w) => save(w)} />
 
+  const pct = totalSets ? Math.round((doneSets / totalSets) * 100) : 0
+  const allDone = totalSets > 0 && doneSets === totalSets
+  const menuEx = menuFor !== null ? active.exercises[menuFor] : undefined
+
   return (
     <div className="animate-rise flex flex-col gap-4 pb-8">
       <header className="flex flex-col gap-3 pt-1">
@@ -627,39 +690,42 @@ export function WorkoutActive() {
                 <Icon name="pencil" size={15} className="shrink-0 text-[var(--color-fg-muted)]" />
               </button>
             )}
-            <p className="tabular mt-0.5 flex items-center gap-1.5 text-sm text-[var(--color-fg-muted)]">
-              <span className="size-2 animate-pulse rounded-full bg-go-500 motion-reduce:animate-none" />
-              {fmtDuration(elapsed)} · {setsDone} {setsDone === 1 ? 'set' : 'sets'} · {fmtVolume(volume, unit)}
-            </p>
             {active.planDayName && active.planDayIndex !== undefined ? (
-              <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-brand-400">
+              <p className="mt-0.5 text-xs font-bold uppercase tracking-[0.14em] text-brand-400">
                 Day {active.planDayIndex + 1}
                 {active.planCycle && active.planCycle > 1 ? ` · Round ${active.planCycle}` : ''}
               </p>
             ) : null}
           </div>
-          <IconButton icon="note" label="Workout notes" onClick={() => setNotesOpen(true)} />
-          <IconButton
-            icon="trash"
-            label="Discard workout"
-            onClick={() => setDiscardOpen(true)}
-            className="text-rose-400 hover:bg-rose-500/15"
-          />
+          <IconButton icon="more" label="Workout menu" onClick={() => setMenuOpen(true)} />
         </div>
 
-        <div
-          role="progressbar"
-          aria-label="Sets completed"
-          aria-valuemin={0}
-          aria-valuemax={totalSets}
-          aria-valuenow={doneSets}
-          className="h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]"
-        >
+        {/* Chunky progress bar with a live headline, so the one thing to look at is "how far along am I". */}
+        <div className="flex items-center gap-3">
           <div
-            className="h-full rounded-full bg-go-500 transition-[width] duration-300 motion-reduce:transition-none"
-            style={{ width: `${totalSets ? (doneSets / totalSets) * 100 : 0}%` }}
-          />
+            role="progressbar"
+            aria-label="Sets completed"
+            aria-valuemin={0}
+            aria-valuemax={totalSets}
+            aria-valuenow={doneSets}
+            className="relative h-4 flex-1 overflow-hidden rounded-full bg-[var(--color-surface-2)]"
+          >
+            <div
+              className="relative h-full rounded-full bg-go-500 transition-[width] duration-500 motion-reduce:transition-none"
+              style={{ width: `${pct}%`, minWidth: doneSets > 0 ? '1rem' : 0 }}
+            >
+              <span className="absolute inset-x-2 top-1 h-1 rounded-full bg-white/30" />
+            </div>
+          </div>
+          <span className="tabular w-16 shrink-0 text-right text-sm font-bold text-go-400">
+            {doneSets}/{totalSets}
+          </span>
         </div>
+
+        <p className="tabular flex items-center gap-1.5 text-sm text-[var(--color-fg-muted)]">
+          <span className="size-2 animate-pulse rounded-full bg-go-500 motion-reduce:animate-none" />
+          {fmtDuration(elapsed)} · {setsDone} {setsDone === 1 ? 'set' : 'sets'} · {fmtVolume(volume, unit)}
+        </p>
       </header>
 
       {/* Idle it's a normal card; while counting down it becomes one slim sticky row. */}
@@ -683,6 +749,10 @@ export function WorkoutActive() {
       ) : (
         <ul className="flex flex-col gap-3">
           {active.exercises.map((ex, exIndex) => {
+            const exKey = keyOf(ex, `${ex.exerciseId}-${exIndex}`)
+            const complete = exerciseDone(ex)
+            const isOpen = openOverride[exKey] ?? exIndex === currentIdx
+            const doneCountHere = ex.sets.filter((s) => s.done).length
             const last = lastPerformance(workouts, ex.exerciseId)
             const lastFull = isTimed(ex) ? lastSetsFull(workouts, ex.exerciseId) : []
             const timed = isTimed(ex)
@@ -700,239 +770,229 @@ export function WorkoutActive() {
             return (
               <Card
                 as="li"
-                key={keyOf(ex, `${ex.exerciseId}-${exIndex}`)}
+                key={exKey}
+                data-ex={exKey}
                 {...reorder.itemProps(exIndex)}
                 style={inSuperset ? { borderLeftColor: ssColor } : undefined}
-                className={`scroll-mt-24 p-3 ${inSuperset ? 'border-l-4' : ''}`}
+                className={`scroll-mt-24 p-3 transition-colors duration-300 ${inSuperset ? 'border-l-4' : ''} ${
+                  complete ? '!border-go-500/40' : ''
+                } ${isOpen && !complete ? 'ring-1 ring-brand-500/40' : ''}`}
               >
-                <div {...reorder.handleProps(exIndex)} className={`mb-2.5 flex items-start gap-2 ${HOLD_HANDLE_CLASS}`}>
-                  <Icon name="grip" size={18} className="mt-0.5 -ml-1 shrink-0 text-[var(--color-fg-muted)]" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="line-clamp-2 text-base font-semibold leading-tight">{ex.name}</h2>
-                      <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
-                      {inSuperset ? <Badge color={ssColor ?? '#a78bfa'}>Superset</Badge> : null}
-                    </div>
-                    {timed && (ex.targetDurationSec || totalSec > 0) ? (
-                      <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
-                        {ex.targetDurationSec ? `Aim: ${fmtTargetDuration(ex.targetDurationSec)}` : ''}
-                        {ex.targetDurationSec && totalSec > 0 ? ' · ' : ''}
-                        {totalSec > 0
-                          ? `Done so far: ${fmtStopwatch(totalSec)}${totalKm > 0 ? ` · ${fmtDistance(totalKm, unit)}` : ''}`
-                          : ''}
-                      </p>
-                    ) : null}
-                    {aim ? (
-                      <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
-                        {aim}
-                        {ex.restSec && profile.restFollowsPlan && profile.restTimer === true
-                          ? ` · Rest ${fmtClock(ex.restSec)}`
-                          : ''}
-                      </p>
-                    ) : null}
-                    {last ? (
-                      <p className="tabular mt-0.5 text-sm text-[var(--color-fg-muted)]">
-                        Last time:{' '}
-                        {last.sets
-                          .slice(0, 4)
-                          .map((s) =>
-                            timed
-                              ? `${fmtStopwatch(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
-                              : ex.tracksWeight
-                                ? `${fmtWeight(s.weightKg, unit, false)}×${s.reps}`
-                                : `${s.reps}`
-                          )
-                          .join(timed ? ', ' : ' · ')}
-                      </p>
-                    ) : (
-                      <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-                        New for you. Start light and see how it feels.
-                      </p>
-                    )}
-                    {overload ? (
-                      <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-go-500/15 px-1.5 py-0.5 text-sm font-bold text-go-400">
-                        <Icon name="trending" size={14} />
-                        You hit the top of your target last time. Try adding {step(unit)} {unit}.
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0">
-                    <IconButton
-                      icon="arrow-up"
-                      label={`Move ${ex.name} up`}
-                      disabled={exIndex === 0}
-                      onClick={() => moveExercise(exIndex, exIndex - 1)}
-                    />
-                    <IconButton
-                      icon="arrow-down"
-                      label={`Move ${ex.name} down`}
-                      disabled={exIndex === active.exercises.length - 1}
-                      onClick={() => moveExercise(exIndex, exIndex + 1)}
-                    />
-                  </div>
-                </div>
-
-                <LogModeToggle
-                  size="sm"
-                  label={`Log ${ex.name} by`}
-                  value={logModeOf(ex)}
-                  onChange={(mode) => setLogMode(exIndex, mode)}
-                />
-
-                {!timed ? (
-                  <div
-                    aria-hidden="true"
-                    className="mt-2.5 flex items-end gap-1.5 px-2 text-xs font-semibold leading-tight text-[var(--color-fg-muted)]"
+                {!isOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setOpenOverride((o) => ({ ...o, [exKey]: true }))}
+                    aria-expanded={false}
+                    aria-label={`Open ${ex.name}, ${doneCountHere} of ${ex.sets.length} sets done`}
+                    className="flex min-h-12 w-full items-center gap-3 text-left"
                   >
-                    <span className="w-8 shrink-0 text-center">Set</span>
-                    <span className="min-w-0 flex-1 text-center">
-                      {ex.tracksWeight
-                        ? dumbbell
-                          ? `Weight (${unit}) per dumbbell`
-                          : `Weight (${unit})`
-                        : `Extra weight (${unit}), optional`}
+                    <span
+                      className={`tabular grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold ${
+                        complete ? 'bg-go-500 text-ink-950' : 'bg-[var(--color-surface-2)] text-[var(--color-fg-muted)]'
+                      }`}
+                    >
+                      {complete ? <Icon name="check" size={18} /> : exIndex + 1}
                     </span>
-                    <span className="w-16 shrink-0 text-center">Reps</span>
-                    <span className="w-11 shrink-0 text-center">More</span>
-                    <span className="w-11 shrink-0 text-center">Done</span>
-                  </div>
-                ) : null}
-
-                <ul className="mt-1.5 flex flex-col gap-1.5">
-                  {ex.sets.map((set, setIndex) => {
-                    const setKey = keyOf(set, `${setIndex}`)
-                    return timed ? (
-                      <TimedSetRow
-                        key={setKey}
-                        index={setIndex}
-                        set={set}
-                        cardioFields={ex.cardioFields}
-                        placeholders={timedPlaceholders(ex, setIndex, lastFull)}
-                        onChange={(setPatch) =>
-                          updateExercise(exIndex, (e) => ({
-                            ...e,
-                            sets: e.sets.map((s, i) =>
-                              i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
-                            ),
-                          }))
-                        }
-                        onStop={(durationSec) =>
-                          toggleSetDone(exIndex, setIndex, { durationSec, timerStartedAt: undefined }, 'done')
-                        }
-                        onToggleDone={() => toggleSetDone(exIndex, setIndex)}
-                        onAutoDone={() => toggleSetDone(exIndex, setIndex, undefined, 'done')}
-                        onRemove={() => removeSet(exIndex, setIndex)}
-                      />
-                    ) : (
-                      <SetRow
-                        key={setKey}
-                        index={setIndex}
-                        set={set}
-                        tracksWeight={ex.tracksWeight}
-                        suggestion={repSuggestion(ex, setIndex, last?.sets)}
-                        targetReps={set.targetReps}
-                        showSuggestionHint={setIndex === nextOpen}
-                        onChange={(setPatch) =>
-                          updateExercise(exIndex, (e) => ({
-                            ...e,
-                            sets: e.sets.map((s, i) =>
-                              i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
-                            ),
-                          }))
-                        }
-                        onToggleDone={(override) => toggleSetDone(exIndex, setIndex, override)}
-                        onRemove={() => removeSet(exIndex, setIndex)}
-                      />
-                    )
-                  })}
-                </ul>
-
-                {ex.notes !== undefined ? (
-                  <>
-                    <label htmlFor={`notes-${keyOf(ex, String(exIndex))}`} className="mt-2 block text-sm font-semibold">
-                      Notes for {ex.name}
-                    </label>
-                    <textarea
-                      id={`notes-${keyOf(ex, String(exIndex))}`}
-                      rows={2}
-                      value={ex.notes}
-                      onChange={(e) => updateExercise(exIndex, (x) => ({ ...x, notes: e.target.value }))}
-                      placeholder="Seat height, how it felt…"
-                      className="mt-1 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2.5 text-sm outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500"
-                    />
-                  </>
-                ) : null}
-
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <button type="button" onClick={() => askSwap(exIndex)} className={CHIP}>
-                    <Icon name="rotate" size={14} /> Swap
-                  </button>
-                  <ExerciseGuide exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
-                  <ExerciseNotes exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
-                  {last ? (
-                    <button type="button" onClick={() => copyLastTime(exIndex)} className={CHIP}>
-                      <Icon name="copy" size={14} /> Copy last time
-                    </button>
-                  ) : null}
-                  {ex.tracksWeight && !timed && usesPlates(ex) ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPlatesFor(ex.sets.find((s) => !s.warmup)?.weightKg ?? ex.sets[0]?.weightKg ?? 0)
-                      }
-                      className={CHIP}
-                    >
-                      <Icon name="calculator" size={14} /> Plate math
-                    </button>
-                  ) : null}
-                  {exIndex < active.exercises.length - 1 ? (
-                    <button type="button" onClick={() => toggleSuperset(exIndex)} className={CHIP}>
-                      <Icon name="link" size={14} />
-                      {paired ? 'Split superset' : 'Superset with next'}
-                    </button>
-                  ) : null}
-                  {ex.notes === undefined ? (
-                    <button
-                      type="button"
-                      onClick={() => updateExercise(exIndex, (x) => ({ ...x, notes: '' }))}
-                      className={CHIP}
-                    >
-                      <Icon name="note" size={14} /> Note
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => askRemoveExercise(exIndex)}
-                    aria-label={`Remove ${ex.name}`}
-                    className={`${CHIP} !text-rose-400 hover:!border-rose-500`}
-                  >
-                    <Icon name="trash" size={14} /> Remove
-                  </button>
-                </div>
-
-                {timed && lastSet?.done ? (
-                  <button
-                    type="button"
-                    onClick={() => addSet(exIndex)}
-                    className="mt-2 flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl
-                      bg-brand-500 text-sm font-bold text-ink-950 transition-colors duration-200
-                      hover:bg-brand-400"
-                  >
-                    <Icon name="plus" size={18} />
-                    Add another set
+                    <span className="min-w-0 flex-1">
+                      <span className="line-clamp-1 block font-semibold leading-tight">{ex.name}</span>
+                      <span className="tabular block text-sm text-[var(--color-fg-muted)]">
+                        {complete ? 'Complete' : `${doneCountHere}/${ex.sets.length} sets`}
+                        {inSuperset ? ' · Superset' : ''}
+                      </span>
+                    </span>
+                    <Icon name="chevron-down" size={18} className="shrink-0 text-[var(--color-fg-muted)]" />
                   </button>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => addSet(exIndex)}
-                    className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl
-                      border border-dashed border-[var(--color-line)] text-sm font-semibold
-                      text-[var(--color-fg-muted)] transition-colors duration-200
-                      hover:border-brand-500 hover:text-brand-400"
-                  >
-                    <Icon name="plus" size={16} />
-                    Add set
-                  </button>
+                  <>
+                    <div {...reorder.handleProps(exIndex)} className={`mb-2.5 flex items-start gap-2 ${HOLD_HANDLE_CLASS}`}>
+                      <button
+                        type="button"
+                        onClick={() => setOpenOverride((o) => ({ ...o, [exKey]: false }))}
+                        aria-expanded
+                        aria-label={`Collapse ${ex.name}`}
+                        className={`tabular mt-0.5 grid size-9 shrink-0 place-items-center rounded-full text-sm font-bold ${
+                          complete ? 'bg-go-500 text-ink-950' : 'bg-brand-500 text-ink-950'
+                        }`}
+                      >
+                        {complete ? <Icon name="check" size={18} /> : exIndex + 1}
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="line-clamp-2 text-base font-semibold leading-tight">{ex.name}</h2>
+                          <Badge color={MUSCLE_COLORS[ex.muscle]}>{ex.muscle}</Badge>
+                          {inSuperset ? <Badge color={ssColor ?? '#a78bfa'}>Superset</Badge> : null}
+                        </div>
+                        {timed && (ex.targetDurationSec || totalSec > 0) ? (
+                          <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
+                            {ex.targetDurationSec ? `Aim: ${fmtTargetDuration(ex.targetDurationSec)}` : ''}
+                            {ex.targetDurationSec && totalSec > 0 ? ' · ' : ''}
+                            {totalSec > 0
+                              ? `Done so far: ${fmtStopwatch(totalSec)}${totalKm > 0 ? ` · ${fmtDistance(totalKm, unit)}` : ''}`
+                              : ''}
+                          </p>
+                        ) : null}
+                        {aim ? (
+                          <p className="tabular mt-0.5 text-sm font-semibold text-brand-400">
+                            {aim}
+                            {ex.restSec && profile.restFollowsPlan && profile.restTimer === true
+                              ? ` · Rest ${fmtClock(ex.restSec)}`
+                              : ''}
+                          </p>
+                        ) : null}
+                        {last ? (
+                          <p className="tabular mt-0.5 text-sm text-[var(--color-fg-muted)]">
+                            Last time:{' '}
+                            {last.sets
+                              .slice(0, 4)
+                              .map((s) =>
+                                timed
+                                  ? `${fmtStopwatch(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
+                                  : ex.tracksWeight
+                                    ? `${fmtWeight(s.weightKg, unit, false)}×${s.reps}`
+                                    : `${s.reps}`
+                              )
+                              .join(timed ? ', ' : ' · ')}
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
+                            New for you. Start light and see how it feels.
+                          </p>
+                        )}
+                        {overload ? (
+                          <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-go-500/15 px-1.5 py-0.5 text-sm font-bold text-go-400">
+                            <Icon name="trending" size={14} />
+                            You hit the top of your target last time. Try adding {step(unit)} {unit}.
+                          </p>
+                        ) : null}
+                      </div>
+                      <IconButton
+                        icon="more"
+                        label={`${ex.name} options`}
+                        onClick={() => setMenuFor(exIndex)}
+                        className="-mr-1 -mt-1"
+                      />
+                    </div>
+
+                    {!timed ? (
+                      <div
+                        aria-hidden="true"
+                        className="flex items-end gap-1 px-1 text-xs font-semibold leading-tight text-[var(--color-fg-muted)]"
+                      >
+                        <span className="w-6 shrink-0 text-center">Set</span>
+                        <span className="min-w-0 flex-1 text-center">
+                          {ex.tracksWeight
+                            ? dumbbell
+                              ? `${unit} per dumbbell`
+                              : unit
+                            : `Extra ${unit}, optional`}
+                        </span>
+                        <span className="w-14 shrink-0 text-center">Reps</span>
+                        <span className="w-10 shrink-0" />
+                        <span className="w-10 shrink-0" />
+                      </div>
+                    ) : null}
+
+                    <ul className="mt-1.5 flex flex-col gap-1.5">
+                      {ex.sets.map((set, setIndex) => {
+                        const setKey = keyOf(set, `${setIndex}`)
+                        return timed ? (
+                          <TimedSetRow
+                            key={setKey}
+                            index={setIndex}
+                            set={set}
+                            cardioFields={ex.cardioFields}
+                            placeholders={timedPlaceholders(ex, setIndex, lastFull)}
+                            onChange={(setPatch) =>
+                              updateExercise(exIndex, (e) => ({
+                                ...e,
+                                sets: e.sets.map((s, i) =>
+                                  i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
+                                ),
+                              }))
+                            }
+                            onStop={(durationSec) =>
+                              toggleSetDone(exIndex, setIndex, { durationSec, timerStartedAt: undefined }, 'done')
+                            }
+                            onToggleDone={() => toggleSetDone(exIndex, setIndex)}
+                            onAutoDone={() => toggleSetDone(exIndex, setIndex, undefined, 'done')}
+                            onRemove={() => removeSet(exIndex, setIndex)}
+                          />
+                        ) : (
+                          <SetRow
+                            key={setKey}
+                            index={setIndex}
+                            set={set}
+                            tracksWeight={ex.tracksWeight}
+                            suggestion={repSuggestion(ex, setIndex, last?.sets)}
+                            targetReps={set.targetReps}
+                            showSuggestionHint={setIndex === nextOpen}
+                            onChange={(setPatch) =>
+                              updateExercise(exIndex, (e) => ({
+                                ...e,
+                                sets: e.sets.map((s, i) =>
+                                  i === setIndex ? dropUndefined({ ...s, ...setPatch }) : s
+                                ),
+                              }))
+                            }
+                            onToggleDone={(override) => toggleSetDone(exIndex, setIndex, override)}
+                            onRemove={() => removeSet(exIndex, setIndex)}
+                          />
+                        )
+                      })}
+                    </ul>
+
+                    {ex.notes !== undefined ? (
+                      <>
+                        <label htmlFor={`notes-${exKey}`} className="mt-2 block text-sm font-semibold">
+                          Notes for {ex.name}
+                        </label>
+                        <textarea
+                          id={`notes-${exKey}`}
+                          rows={2}
+                          value={ex.notes}
+                          onChange={(e) => updateExercise(exIndex, (x) => ({ ...x, notes: e.target.value }))}
+                          placeholder="Seat height, how it felt…"
+                          className="mt-1 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-2.5 text-sm outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500"
+                        />
+                      </>
+                    ) : null}
+
+                    {complete ? (
+                      <p className="animate-pop mt-2 flex items-center justify-center gap-1.5 rounded-xl bg-go-500/15 py-2 text-sm font-bold text-go-400">
+                        <Icon name="check" size={16} /> Exercise complete
+                      </p>
+                    ) : null}
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <ExerciseGuide exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
+                      <ExerciseNotes exerciseId={ex.exerciseId} name={ex.name} chipClass={CHIP} />
+                    </div>
+
+                    {timed && lastSet?.done ? (
+                      <button
+                        type="button"
+                        onClick={() => addSet(exIndex)}
+                        className="mt-2 flex min-h-12 w-full items-center justify-center gap-1.5 rounded-xl
+                          bg-brand-500 text-sm font-bold text-ink-950 transition-colors duration-200
+                          hover:bg-brand-400"
+                      >
+                        <Icon name="plus" size={18} />
+                        Add another set
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => addSet(exIndex)}
+                        className="mt-2 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl
+                          border border-dashed border-[var(--color-line)] text-sm font-semibold
+                          text-[var(--color-fg-muted)] transition-colors duration-200
+                          hover:border-brand-500 hover:text-brand-400"
+                      >
+                        <Icon name="plus" size={16} />
+                        Add set
+                      </button>
+                    )}
+                  </>
                 )}
               </Card>
             )
@@ -953,9 +1013,148 @@ export function WorkoutActive() {
         </Card>
       ) : null}
 
-      <Button size="lg" variant="go" full icon="check" onClick={requestFinish}>
+      {allDone ? (
+        <div className="animate-pop flex flex-col items-center gap-1 rounded-2xl bg-go-500/15 p-4 text-center">
+          <span className="grid size-12 place-items-center rounded-full bg-go-500 text-ink-950">
+            <Icon name="trophy" size={24} />
+          </span>
+          <p className="font-display text-xl font-semibold">Workout complete!</p>
+          <p className="text-sm text-[var(--color-fg-muted)]">
+            {doneSets} sets, {fmtVolume(volume, unit)} lifted. Lock it in.
+          </p>
+        </div>
+      ) : null}
+
+      <Button size="lg" variant={allDone ? 'go' : 'secondary'} full icon="check" onClick={requestFinish}>
         Finish workout
       </Button>
+
+      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Workout">
+        <div className="flex flex-col gap-1.5">
+          <MenuRow
+            icon="pencil"
+            label="Rename workout"
+            onClick={() => {
+              setMenuOpen(false)
+              setRenaming(true)
+            }}
+          />
+          <MenuRow
+            icon="note"
+            label="Workout notes"
+            onClick={() => {
+              setMenuOpen(false)
+              setNotesOpen(true)
+            }}
+          />
+          <MenuRow
+            icon="trash"
+            label="Discard workout"
+            danger
+            onClick={() => {
+              setMenuOpen(false)
+              setDiscardOpen(true)
+            }}
+          />
+        </div>
+      </Sheet>
+
+      <Sheet open={menuFor !== null} onClose={() => setMenuFor(null)} title={menuEx?.name ?? 'Exercise'}>
+        {menuEx && menuFor !== null ? (
+          <div className="flex flex-col gap-3">
+            <div>
+              <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">Log by</p>
+              <LogModeToggle
+                size="sm"
+                label={`Log ${menuEx.name} by`}
+                value={logModeOf(menuEx)}
+                onChange={(mode) => setLogMode(menuFor, mode)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <MenuRow
+                icon="rotate"
+                label="Swap exercise"
+                onClick={() => {
+                  const i = menuFor
+                  setMenuFor(null)
+                  askSwap(i)
+                }}
+              />
+              {lastPerformance(workouts, menuEx.exerciseId) ? (
+                <MenuRow
+                  icon="copy"
+                  label="Copy last time"
+                  onClick={() => {
+                    copyLastTime(menuFor)
+                    setMenuFor(null)
+                  }}
+                />
+              ) : null}
+              {menuEx.tracksWeight && !isTimed(menuEx) && usesPlates(menuEx) ? (
+                <MenuRow
+                  icon="calculator"
+                  label="Plate math"
+                  onClick={() => {
+                    setPlatesFor(menuEx.sets.find((s) => !s.warmup)?.weightKg ?? menuEx.sets[0]?.weightKg ?? 0)
+                    setMenuFor(null)
+                  }}
+                />
+              ) : null}
+              {menuFor < active.exercises.length - 1 ? (
+                <MenuRow
+                  icon="link"
+                  label={linkedToNext(active.exercises, menuFor) ? 'Split superset' : 'Superset with next'}
+                  onClick={() => {
+                    toggleSuperset(menuFor)
+                    setMenuFor(null)
+                  }}
+                />
+              ) : null}
+              {menuEx.notes === undefined ? (
+                <MenuRow
+                  icon="note"
+                  label="Add a note for today"
+                  onClick={() => {
+                    updateExercise(menuFor, (x) => ({ ...x, notes: '' }))
+                    setMenuFor(null)
+                  }}
+                />
+              ) : null}
+              <div className="flex gap-1.5">
+                <MenuRow
+                  icon="arrow-up"
+                  label="Move up"
+                  disabled={menuFor === 0}
+                  onClick={() => {
+                    moveExercise(menuFor, menuFor - 1)
+                    setMenuFor(menuFor - 1)
+                  }}
+                />
+                <MenuRow
+                  icon="arrow-down"
+                  label="Move down"
+                  disabled={menuFor === active.exercises.length - 1}
+                  onClick={() => {
+                    moveExercise(menuFor, menuFor + 1)
+                    setMenuFor(menuFor + 1)
+                  }}
+                />
+              </div>
+              <MenuRow
+                icon="trash"
+                label="Remove exercise"
+                danger
+                onClick={() => {
+                  const i = menuFor
+                  setMenuFor(null)
+                  askRemoveExercise(i)
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
+      </Sheet>
 
       <ExercisePicker open={pickerOpen} onClose={() => setPickerOpen(false)} onPick={addExercises} />
       <ExercisePicker
