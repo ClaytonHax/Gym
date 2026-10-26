@@ -6,7 +6,6 @@ import { RoutineBuilder } from '../components/RoutineBuilder'
 import { StarterPlans } from '../components/plans'
 import { ConfirmSheet, IconButton, Sheet, Skeleton } from '../components/ui'
 import { TrainStatusBar } from '../components/train/TrainStatusBar'
-import { PlanPath, type NodeState } from '../components/train/PlanPath'
 import { useSettings } from '../contexts/SettingsContext'
 import { useToast } from '../contexts/ToastContext'
 import { useRoutines } from '../hooks/useRoutines'
@@ -18,7 +17,7 @@ import { planToExercises } from '../data/programs'
 import { toWorkoutExercise, withCardioFields, attachCardioFields } from '../lib/workoutExercise'
 import { dayKey, fmtDuration } from '../lib/date'
 import { nextWorkoutLabel, nextWorkoutSlot } from '../lib/planUiLogic'
-import { estimateMinutes, exerciseTargetLabel, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
+import { estimateMinutes, scheduleFor, setCountOf, startPlanDay } from '../lib/plans'
 import { computeStreaks } from '../lib/streaks'
 import { dailyQuests, todayQuestStats } from '../lib/quests'
 import { XP_RULES } from '../lib/xp'
@@ -79,25 +78,7 @@ function MuscleChips({ exercises }: { exercises: PlanExercise[] }) {
   )
 }
 
-function ExerciseLines({ exercises }: { exercises: PlanExercise[] }) {
-  return (
-    <ul className="flex flex-col gap-1.5 text-sm">
-      {exercises.map((e, i) => (
-        <li key={`${e.exerciseId}-${i}`} className="flex items-center gap-2">
-          <span
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: MUSCLE_COLORS[e.muscle] }}
-            aria-hidden
-          />
-          <span className="min-w-0 flex-1 truncate">{e.name}</span>
-          <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">{exerciseTargetLabel(e)}</span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
-/** The Train tab when nothing is in progress: today's lesson, the plan path, routines, freestyle. */
+/** The Train tab when nothing is in progress: today's lesson, routines, freestyle. */
 export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => void }) {
   const toast = useToast()
   const { profile } = useSettings()
@@ -109,8 +90,6 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
   const [pickerOpen, setPickerOpen] = useState(false)
   const [builderOpen, setBuilderOpen] = useState(false)
   const [editing, setEditing] = useState<Routine | null>(null)
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null)
-  const [restOpen, setRestOpen] = useState(false)
   const [menuRoutine, setMenuRoutine] = useState<Routine | null>(null)
   const [deleting, setDeleting] = useState<Routine | null>(null)
 
@@ -138,21 +117,6 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
     [workouts, xp.byWorkout, xp.prsByWorkout]
   )
 
-  // Per-node state for the current round of the plan.
-  const nodeStates = useMemo<NodeState[]>(() => {
-    if (!activePlan || !today) return []
-    return activePlan.days.map((day, i) => {
-      const done =
-        today.cycle > 0 &&
-        workouts.some(
-          (w) => w.planId === activePlan.id && w.planCycle === today.cycle && w.planDayIndex === i
-        )
-      if (done) return 'done'
-      if (today.dayIndex === i && !today.isRest) return 'today'
-      return day.kind === 'rest' ? 'rest' : 'upcoming'
-    })
-  }, [activePlan, today, workouts])
-
   /** Start any day of the active plan, tagged with its place in the cycle. */
   function startPlanned(index: number) {
     if (!activePlan || !activeState) return
@@ -168,14 +132,6 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
   function start(name: string, exercises: WorkoutExercise[]) {
     onStart({ name, startedAt: new Date().toISOString(), exercises })
   }
-
-  function selectNode(index: number) {
-    if (!activePlan) return
-    if (activePlan.days[index].kind === 'rest') setRestOpen(true)
-    else setPreviewIndex(index)
-  }
-
-  const preview = previewIndex !== null && activePlan ? activePlan.days[previewIndex] : null
 
   return (
     <div className="animate-rise flex flex-col gap-6">
@@ -261,15 +217,6 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
           </div>
         )}
       </section>
-
-      {activePlan && today ? (
-        <section aria-label="Your plan">
-          <h2 className="mb-2 text-lg font-semibold">
-            Your plan · Round {Math.max(1, today.cycle)}
-          </h2>
-          <PlanPath days={activePlan.days} states={nodeStates} onSelect={selectNode} />
-        </section>
-      ) : null}
 
       <section aria-label="Quick start" className="grid grid-cols-2 gap-3">
         <button
@@ -384,57 +331,6 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
         }}
         onCancel={() => setDeleting(null)}
       />
-
-      <Sheet
-        open={preview !== null}
-        onClose={() => setPreviewIndex(null)}
-        title={preview?.name ?? 'Workout'}
-        footer={
-          <button
-            type="button"
-            onClick={() => {
-              const i = previewIndex
-              setPreviewIndex(null)
-              if (i !== null) startPlanned(i)
-            }}
-            className="btn-3d btn-3d-go w-full min-h-14 text-lg"
-          >
-            <Icon name="play" size={20} />
-            Start this day
-          </button>
-        }
-      >
-        {preview ? (
-          <div className="flex flex-col gap-4">
-            {preview.focus ? <p className="text-sm text-[var(--color-fg-muted)]">{preview.focus}</p> : null}
-            <p className="tabular text-xs font-semibold text-[var(--color-fg-muted)]">
-              {metaLine(preview.exercises)}
-            </p>
-            <ExerciseLines exercises={preview.exercises} />
-          </div>
-        ) : null}
-      </Sheet>
-
-      <Sheet open={restOpen} onClose={() => setRestOpen(false)} title="Rest day">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="grid size-16 place-items-center rounded-2xl bg-rest/15 text-rest">
-            <Icon name="moon" size={32} />
-          </span>
-          <p className="text-sm text-[var(--color-fg-muted)]">
-            Muscles grow while you recover. Feeling fresh? You can still train.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setRestOpen(false)
-              setAnywayOpen(true)
-            }}
-            className="btn-3d btn-3d-neutral w-full min-h-14"
-          >
-            Train anyway
-          </button>
-        </div>
-      </Sheet>
 
       <Sheet open={anywayOpen} onClose={() => setAnywayOpen(false)} title="Train anyway">
         <ul className="flex flex-col gap-2">

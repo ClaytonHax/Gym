@@ -37,55 +37,15 @@ export function openTrainTour(opts: { unseenOnly?: boolean } = {}): void {
 /* Illustrations: small CSS-only copies of real UI bits. Decorative only.      */
 /* -------------------------------------------------------------------------- */
 
-const PATH_NODES: Array<{ x: number; y: number; state: 'done' | 'today' | 'locked' }> = [
-  { x: 14, y: 62, state: 'done' },
-  { x: 38, y: 30, state: 'done' },
-  { x: 62, y: 66, state: 'today' },
-  { x: 86, y: 34, state: 'locked' },
-]
-
-const NODE_TONE = {
-  done: 'size-11 bg-go-500 text-ink-950 shadow-[0_4px_0_var(--color-go-600)]',
-  today: 'size-14 bg-brand-500 text-ink-950 shadow-[0_5px_0_var(--color-brand-700)] animate-pulse-ring',
-  locked: 'size-11 border-2 border-[var(--color-line)] bg-[var(--color-surface)] text-[var(--color-fg-muted)]',
-}
-
-const NODE_ICON: Record<'done' | 'today' | 'locked', IconName> = {
-  done: 'check',
-  today: 'dumbbell',
-  locked: 'lock',
-}
-
-function PathArt() {
+function StartArt() {
   return (
-    <div className="relative size-full">
-      <svg className="absolute inset-0 size-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-        <polyline
-          points={PATH_NODES.map((n) => `${n.x},${n.y}`).join(' ')}
-          fill="none"
-          stroke="var(--color-line)"
-          strokeWidth="3"
-          strokeDasharray="2 7"
-          strokeLinecap="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-      {PATH_NODES.map((n, i) => (
-        <span
-          key={i}
-          className="absolute"
-          style={{ left: `${n.x}%`, top: `${n.y}%`, transform: 'translate(-50%, -50%)' }}
-        >
-          {n.state === 'today' ? (
-            <span className="absolute -top-9 left-1/2 -translate-x-1/2 rounded-lg bg-brand-500 px-2 py-0.5 text-[10px] font-bold tracking-wider whitespace-nowrap text-ink-950">
-              START
-            </span>
-          ) : null}
-          <span className={`grid place-items-center rounded-full ${NODE_TONE[n.state]}`}>
-            <Icon name={NODE_ICON[n.state]} size={n.state === 'today' ? 24 : 18} />
-          </span>
-        </span>
-      ))}
+    <div className="flex w-full flex-col gap-2 rounded-2xl bg-[var(--color-surface)] p-3 shadow-sm">
+      <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-brand-400">Today · Day 3</span>
+      <span className="font-display text-2xl leading-none font-bold">Pull 1</span>
+      <span className="btn-3d btn-3d-go inline-flex h-10 items-center justify-center gap-2 rounded-xl text-sm">
+        <Icon name="play" size={14} />
+        Start
+      </span>
     </div>
   )
 }
@@ -181,9 +141,9 @@ interface Slide {
 
 const SLIDES: Slide[] = [
   {
-    title: 'Your plan is a path',
-    body: "Tap the glowing day to start today's workout.",
-    art: <PathArt />,
+    title: 'Start in one tap',
+    body: "Today's workout is right at the top of Train. Hit Start, or pick your own routine.",
+    art: <StartArt />,
     isNew: true,
   },
   {
