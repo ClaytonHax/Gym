@@ -40,6 +40,10 @@ async function run(request) {
 
   const started = Date.now()
   const bot = await signIn(BOT_EMAIL, BOT_PASSWORD)
+
+  // Manual check (needs the cron secret): /api/streak-check?test=<username> sends that user one real reminder.
+  const testUser = new URL(request.url).searchParams.get('test')
+  if (testUser) return json(200, await sendTest(bot, testUser))
   const watches = await listAll(bot.idToken, 'streakWatch', { pageSize: 100, maxDocs: 3000 })
   const summary = { ok: true, users: watches.length, risk: 0, lost: 0, unfinished: 0, missed: 0, friendPings: 0, pushes: 0, errors: 0, skipped: 0 }
 
@@ -61,6 +65,17 @@ async function run(request) {
   }
   await Promise.all(Array.from({ length: CONCURRENCY }, worker))
   return json(200, summary)
+}
+
+/** Sends one finish_workout reminder to a username through the real delivery path. */
+async function sendTest(bot, username) {
+  const summary = { ok: true, test: true, pushes: 0, errors: 0 }
+  const entry = await readAs(bot.idToken, `usernames/${username.toLowerCase()}`)
+  if (!entry?.uid) return { ok: false, error: 'unknown username' }
+  const text = 'Test reminder: this is how the "finish your workout" nudge will look.'
+  const day = localParts('UTC').day
+  summary.created = await deliver(bot, entry.uid, { type: 'finish_workout', text }, `finish_workout_${bot.uid}_${day}`, summary)
+  return summary
 }
 
 /** Inbox notification (once per id) + push. Returns true if newly created. */
