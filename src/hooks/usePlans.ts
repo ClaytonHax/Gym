@@ -18,6 +18,8 @@ export interface UsePlans {
   /** Today plus the next n - 1 days; [] with no active plan. */
   upcoming: (n?: number) => ScheduleSlot[]
   isRestDay: ((date: DayKey) => boolean) | undefined
+  /** True on days the active plan schedules a workout (not rest, adjusted, or before the start). */
+  isTrainingDay: ((date: DayKey) => boolean) | undefined
   savePlan: (p: Pick<Plan, 'name' | 'days' | 'templateId' | 'sharedFrom'>) => Promise<string>
   /** `customized` marks a followed copy as the user's own, which stops automatic updates. */
   updatePlan: (id: string, p: Pick<Plan, 'name' | 'days'>, opts?: { customized?: boolean }) => Promise<void>
@@ -124,6 +126,15 @@ export function usePlans(): UsePlans {
       (planned ? isPlannedRest(activePlan, activeState, date) : false)
   }, [activePlan, activeState, restWeekdays])
 
+  const isTrainingDay = useMemo(() => {
+    if (!activePlan || !activeState) return undefined
+    const fixed = new Set(restWeekdays ?? [])
+    return (date: DayKey) => {
+      const slot = scheduleFor(activePlan, activeState, date)
+      return slot.dayIndex !== null && !slot.isRest && !fixed.has((parseDayKey(date).getDay() + 6) % 7)
+    }
+  }, [activePlan, activeState, restWeekdays])
+
   const requireUser = useCallback(() => {
     if (!user) throw new Error('Not signed in')
     return user
@@ -215,6 +226,7 @@ export function usePlans(): UsePlans {
     today,
     upcoming,
     isRestDay,
+    isTrainingDay,
     savePlan,
     updatePlan,
     deletePlan,

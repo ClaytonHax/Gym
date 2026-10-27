@@ -216,6 +216,10 @@ const watch = (extra = {}) => ({
   streakBeforePrev: 2, updatedAt: '2026-10-24T10:00:00Z', ...extra,
 })
 await t('owner writes own streakWatch', () => assertSucceeds(setDoc(doc(B, 'streakWatch/bob'), watch())))
+await t('streakWatch with reminder fields succeeds', () =>
+  assertSucceeds(setDoc(doc(B, 'streakWatch/bob'), watch({ openSince: '2026-10-24T09:00:00Z', planDays: ['2026-10-23'], trainedDays: [] }))))
+await t('streakWatch with too many planDays fails', () =>
+  assertFails(setDoc(doc(B, 'streakWatch/bob'), watch({ planDays: Array(15).fill('2026-10-25') }))))
 await t('streakWatch with extra field fails', () => assertFails(setDoc(doc(B, 'streakWatch/bob'), watch({ secret: 'x' }))))
 await t('streakWatch with bad unit fails', () => assertFails(setDoc(doc(B, 'streakWatch/bob'), watch({ unit: 'month' }))))
 await t('streakWatch with too many rest days fails', () =>
@@ -237,6 +241,10 @@ await t('bot reads profiles', () => assertSucceeds(getDoc(doc(botDb, 'profiles/b
 const botN = (type, extra = {}) => ({
   type, from: BOT, fromUsername: 'Gym', read: false, createdAt: serverTimestamp(), text: 'streak', ...extra,
 })
+await t('bot creates finish_workout', () =>
+  assertSucceeds(setDoc(doc(botDb, `users/bob/notifications/finish_workout_${BOT}_2026-10-24`), botN('finish_workout'))))
+await t('bot creates missed_day', () =>
+  assertSucceeds(setDoc(doc(botDb, `users/bob/notifications/missed_day_${BOT}_2026-10-24`), botN('missed_day'))))
 await t('bot creates streak_risk', () =>
   assertSucceeds(setDoc(doc(botDb, `users/bob/notifications/streak_risk_${BOT}_2026-10-24`), botN('streak_risk'))))
 await t('bot streak_risk twice same id fails', () =>

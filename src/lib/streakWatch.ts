@@ -20,6 +20,12 @@ export interface StreakWatch {
   workoutsThisWeek: number
   prevWeekWorkouts: number
   streakBeforePrev: number
+  /** startedAt of an unfinished session that has logged sets; '' when none. */
+  openSince: string
+  /** Scheduled training days from 3 days back to 7 ahead (plan only, rest days excluded). */
+  planDays: string[]
+  /** Days in the last 3 with a logged workout. */
+  trainedDays: string[]
   updatedAt: string
 }
 
@@ -28,7 +34,7 @@ export type StreakStatus = { status: 'risk' | 'lost' | null; streak: number }
 export function buildStreakWatch(
   workouts: Workout[],
   streaks: StreakStats,
-  opts: { isRestDay?: (d: string) => boolean; weeklyGoal: number; now?: Date }
+  opts: { isRestDay?: (d: string) => boolean; isTrainingDay?: (d: string) => boolean; openSince?: string; weeklyGoal: number; now?: Date }
 ): StreakWatch {
   const now = opts.now ?? new Date()
   const today = dayKey(now)
@@ -57,6 +63,16 @@ export function buildStreakWatch(
     }
   }
 
+  const planDays: string[] = []
+  if (opts.isTrainingDay) {
+    for (let i = -3; i <= 7; i++) {
+      const k = dayKey(addDays(now, i))
+      if (opts.isTrainingDay(k)) planDays.push(k)
+    }
+  }
+  const recent = new Set(Array.from({ length: 4 }, (_, i) => dayKey(addDays(now, -i))))
+  const trainedDays = [...new Set(workouts.map((w) => dayKey(new Date(w.startedAt))).filter((d) => recent.has(d)))].sort()
+
   let tz = 'UTC'
   try {
     tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
@@ -76,6 +92,9 @@ export function buildStreakWatch(
     workoutsThisWeek: streaks.workoutsThisWeek,
     prevWeekWorkouts: perWeek.get(dayKey(prevMonday)) ?? 0,
     streakBeforePrev,
+    openSince: opts.openSince ?? '',
+    planDays,
+    trainedDays,
     updatedAt: now.toISOString(),
   }
 }

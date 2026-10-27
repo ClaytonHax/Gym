@@ -21,6 +21,7 @@ const PREFS: Array<{ type: NotificationType; label: string; description: string 
   { type: 'workout', label: 'Friends’ workouts', description: 'When a friend finishes a session.' },
   { type: 'kudos', label: 'Reactions', description: 'When friends react to your workouts.' },
   { type: 'streak_risk', label: 'Streak reminders', description: 'When your streak is about to end, or just did.' },
+  { type: 'finish_workout', label: 'Workout reminders', description: 'If you forget to finish a workout, or miss a planned day.' },
   { type: 'friend_streak', label: 'Friends’ streaks', description: 'When a friend’s streak is about to end.' },
   { type: 'challenge_invite', label: 'Challenges', description: 'Invites and friends joining yours.' },
 ]
@@ -144,6 +145,7 @@ export function NotificationPrefs() {
     if (type === 'challenge_invite') next.challenge_join = on
     if (type === 'friend_request') next.friend_accept = on
     if (type === 'streak_risk') next.streak_lost = on
+    if (type === 'finish_workout') next.missed_day = on
     try {
       await savePushPrefs(user.uid, next)
     } catch {

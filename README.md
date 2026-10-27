@@ -117,7 +117,10 @@ A daily Vercel Cron ([`api/streak-check.js`](./api/streak-check.js), 16:00 UTC) 
 streak is about to end (or just ended) and pings their friends ("nudge them?"). It has no admin
 credentials: it signs in as a dedicated **streak bot** Firebase user and reads only the small
 `streakWatch/{uid}` doc each client keeps (timezone, streak, planned rest days, week counts), plus
-friends lists and push subscriptions, all gated by `firestore.rules` (`isBot()`). The in-app
+friends lists and push subscriptions, all gated by `firestore.rules` (`isBot()`). The same cron also
+reminds people to press *Complete workout* when a session with logged sets was left open for 3+ hours,
+and to hit the gym or skip a day in the app when yesterday's planned workout wasn't logged (only
+between 07:00 and 21:59 local time). The in-app
 Dashboard card and the Friends highlight work without any of this.
 
 One-time setup:

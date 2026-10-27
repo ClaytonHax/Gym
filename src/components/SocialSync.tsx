@@ -4,6 +4,7 @@ import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
+import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { usePlans } from '../hooks/usePlans'
 import { publishMyProofs } from '../hooks/useChallengeProofs'
@@ -22,14 +23,17 @@ const FRESH_MS = 2 * 60 * 60 * 1000
 export function useMyPublicStats() {
   const { profile } = useSettings()
   const { workouts, loading } = useWorkouts()
-  const { isRestDay, activeState, loading: plansLoading } = usePlans()
+  const { isRestDay, isTrainingDay, activeState, loading: plansLoading } = usePlans()
+  const { active } = useActiveWorkout()
+  // Only a session with something logged counts; a freshly opened empty one isn't "forgotten".
+  const openSince = active?.exercises.some((e) => e.sets.some((s) => s.done)) ? active.startedAt : ''
   const computed = useMemo(() => {
     const streaks = computeStreaks(workouts, {
       isRestDay,
       planStartDate: activeState?.startDate,
       weeklyGoal: profile.weeklyGoal,
     })
-    const watch = buildStreakWatch(workouts, streaks, { isRestDay, weeklyGoal: profile.weeklyGoal })
+    const watch = buildStreakWatch(workouts, streaks, { isRestDay, isTrainingDay, openSince, weeklyGoal: profile.weeklyGoal })
     const risk = evaluateWatch(watch, localNow(), 0)
     const base = buildPublicStats(workouts, streaks, profile.weeklyGoal)
     return {
@@ -43,7 +47,7 @@ export function useMyPublicStats() {
       status: evaluateWatch(watch, localNow(), 12),
       streaks,
     }
-  }, [workouts, isRestDay, activeState?.startDate, profile.weeklyGoal])
+  }, [workouts, isRestDay, isTrainingDay, openSince, activeState?.startDate, profile.weeklyGoal])
   return { stats: computed.stats, watch: computed.watch, status: computed.status, streaks: computed.streaks, workouts, ready: !loading && !plansLoading }
 }
 

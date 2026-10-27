@@ -72,6 +72,8 @@ export type NotificationType =
   | 'challenge_join'
   | 'streak_risk'
   | 'streak_lost'
+  | 'finish_workout'
+  | 'missed_day'
   | 'friend_streak'
   | 'challenge_left'
 
@@ -641,6 +643,10 @@ export function describeNotification(
       return { ...base, title: n.text || 'Your streak is on the line', to: '/' }
     case 'streak_lost':
       return { ...base, title: n.text || 'Your streak ended. Start a new one today.', to: '/' }
+    case 'finish_workout':
+      return { ...base, title: n.text || 'You never finished your workout. Press Complete workout.', to: '/' }
+    case 'missed_day':
+      return { ...base, title: n.text || 'You missed a workout. Hit the gym or skip a day.', to: '/' }
     case 'friend_streak':
       return { ...base, title: n.text || `${who}’s streak is at risk`, to: n.ref ? `/friends/${n.ref}` : '/friends' }
   }

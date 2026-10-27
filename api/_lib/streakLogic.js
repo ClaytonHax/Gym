@@ -41,6 +41,36 @@ export function localParts(tz, date = new Date()) {
   return { day: `${get('year')}-${get('month')}-${get('day')}`, hour: Number(get('hour')) % 24 }
 }
 
+/** Local hours in which the workout reminders may fire, so a UTC cron never pings at 3am. */
+export function reminderHour(hour) {
+  return hour >= 7 && hour <= 21
+}
+
+/** Gap before an unfinished session counts as forgotten (the cron only runs daily). */
+export const OPEN_WORKOUT_MS = 3 * 60 * 60 * 1000
+
+/** A session with logged sets that was started long enough ago and never finished. */
+export function forgottenWorkout(w, nowMs = Date.now()) {
+  if (!w || typeof w.openSince !== 'string' || !w.openSince) return false
+  const started = Date.parse(w.openSince)
+  return !Number.isNaN(started) && nowMs - started >= OPEN_WORKOUT_MS
+}
+
+/**
+ * Yesterday was a scheduled training day and nothing was logged for it.
+ * The doc is only rewritten when the app syncs, so it may be a few days old.
+ */
+export function missedPlanDay(w, now) {
+  if (!w || typeof w.asOfDay !== 'string' || !Array.isArray(w.planDays)) return false
+  const lag = (parseDay(now.day) - parseDay(w.asOfDay)) / 86400000
+  if (!(lag >= 0 && lag <= 3)) return false
+  if (w.lastWorkoutDay === now.day) return false
+  const yesterday = addDay(now.day, -1)
+  if (!w.planDays.includes(yesterday)) return false
+  if (w.lastWorkoutDay === yesterday || (Array.isArray(w.trainedDays) && w.trainedDays.includes(yesterday))) return false
+  return true
+}
+
 /**
  * @param w streakWatch doc
  * @param now { day, hour } in the user's timezone

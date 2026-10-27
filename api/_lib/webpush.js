@@ -28,6 +28,10 @@ export function message(n) {
       return { title: 'Your streak is on the line', body: n.text || 'Train today to keep it alive.', url: '/' }
     case 'streak_lost':
       return { title: 'Streak ended', body: n.text || 'Start a new one today.', url: '/' }
+    case 'finish_workout':
+      return { title: 'Finish your workout', body: n.text || 'Press Complete workout so it counts.', url: '/' }
+    case 'missed_day':
+      return { title: 'You missed a workout', body: n.text || 'Hit the gym today, or skip a day in the app.', url: '/' }
     case 'friend_streak':
       return { title: 'A friend’s streak is at risk', body: n.text || 'Give them a nudge.', url: n.ref ? `/friends/${n.ref}` : '/friends' }
     default:

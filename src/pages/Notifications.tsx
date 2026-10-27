@@ -20,6 +20,8 @@ const TYPE_ICON: Record<NotificationType, { icon: IconName; tone: string }> = {
   challenge_left: { icon: 'swords', tone: 'bg-rest text-ink-950' },
   streak_risk: { icon: 'flame', tone: 'bg-brand-500 text-ink-950' },
   streak_lost: { icon: 'flame', tone: 'bg-rest text-ink-950' },
+  finish_workout: { icon: 'dumbbell', tone: 'bg-brand-500 text-ink-950' },
+  missed_day: { icon: 'flame', tone: 'bg-rest text-ink-950' },
   friend_streak: { icon: 'flame', tone: 'bg-brand-500 text-ink-950' },
 }
 

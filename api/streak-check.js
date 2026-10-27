@@ -5,7 +5,7 @@
 // No admin SDK / service account. Env: CRON_SECRET, BOT_EMAIL, BOT_PASSWORD,
 // VITE_FIREBASE_API_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY.
 import { createWithTimestamp, listAll, readAs, signIn } from './_lib/firestore.js'
-import { evaluateWatch, localParts } from './_lib/streakLogic.js'
+import { evaluateWatch, forgottenWorkout, localParts, missedPlanDay, reminderHour } from './_lib/streakLogic.js'
 import { message, pushConfigured, sendToSubs } from './_lib/webpush.js'
 
 export const config = { maxDuration: 60 }
@@ -41,7 +41,7 @@ async function run(request) {
   const started = Date.now()
   const bot = await signIn(BOT_EMAIL, BOT_PASSWORD)
   const watches = await listAll(bot.idToken, 'streakWatch', { pageSize: 100, maxDocs: 3000 })
-  const summary = { ok: true, users: watches.length, risk: 0, lost: 0, friendPings: 0, pushes: 0, errors: 0, skipped: 0 }
+  const summary = { ok: true, users: watches.length, risk: 0, lost: 0, unfinished: 0, missed: 0, friendPings: 0, pushes: 0, errors: 0, skipped: 0 }
 
   let i = 0
   async function worker() {
@@ -83,15 +83,31 @@ async function handleUser(bot, w, summary) {
   const data = w.data
   const tz = typeof data.tz === 'string' ? data.tz : 'UTC'
   const now = localParts(tz)
-  const verdict = evaluateWatch(data, now)
-  if (!verdict.status) return
   const uid = w.id
+  const canRemind = reminderHour(now.hour)
+
+  if (canRemind && forgottenWorkout(data)) {
+    const text = 'You logged sets but never finished your workout. Open the app and press Complete workout so it counts.'
+    if (await deliver(bot, uid, { type: 'finish_workout', text }, `finish_workout_${bot.uid}_${now.day}`, summary)) summary.unfinished++
+  }
+
+  const verdict = evaluateWatch(data, now)
+  const missed = canRemind && missedPlanDay(data, now)
+  if (!verdict.status && !missed) return
   const unit = data.unit === 'week' ? 'week' : 'day'
   const n = verdict.streak
   const label = `${n}-${unit}`
 
+  if (!verdict.status) {
+    const text = 'You missed a workout. Get to the gym today, or open the app to skip a day.'
+    if (await deliver(bot, uid, { type: 'missed_day', text }, `missed_day_${bot.uid}_${now.day}`, summary)) summary.missed++
+    return
+  }
+
   if (verdict.status === 'lost') {
-    const text = `Your ${label} streak ended. Start a new one today.`
+    const text = missed
+      ? `Your ${label} streak ended. Get to the gym today, or open the app to skip a day.`
+      : `Your ${label} streak ended. Start a new one today.`
     if (await deliver(bot, uid, { type: 'streak_lost', text }, `streak_lost_${bot.uid}_${now.day}`, summary)) summary.lost++
     return
   }
