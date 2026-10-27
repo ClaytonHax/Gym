@@ -244,6 +244,16 @@ export function suggestUsername(seed: string): string {
   return `${base}${Math.floor(100 + Math.random() * 900)}`
 }
 
+/**
+ * A brand-new profile still on its auto-assigned handle: both timestamps were
+ * written together at creation. A `freeChange` flag set later (a granted rename)
+ * only unlocks the rename button, it doesn't send anyone back through setup.
+ */
+export function needsSetup(p: PublicProfile | null | undefined): boolean {
+  if (!p?.freeChange) return false
+  return !p.joinedAt || !p.usernameChangedAt || p.joinedAt === p.usernameChangedAt
+}
+
 /** When the next rename is allowed, or null if one is available now. */
 export function nextRenameAt(p: PublicProfile): Date | null {
   if (p.freeChange || !p.usernameChangedAt) return null

@@ -12,7 +12,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { useUsernameAvailability } from '../hooks/useUsernameAvailability'
 import { dayKey } from '../lib/date'
-import { normalizeUsername, RENAME_COOLDOWN_DAYS, usernameError } from '../lib/social'
+import { needsSetup, normalizeUsername, RENAME_COOLDOWN_DAYS, usernameError } from '../lib/social'
 import { kgTo, toKg } from '../lib/units'
 
 const OPEN_EVENT = 'gym:profile-setup'
@@ -78,7 +78,7 @@ function SetupSheet({ onClose }: { onClose: () => void }) {
     setWeight((w) => w || latestText)
   }, [loading, latestText])
 
-  const needsUsername = Boolean(me?.freeChange)
+  const needsUsername = needsSetup(me)
 
   // Replace the machine-made handle with a readable one from the display name, if free.
   useEffect(() => {
@@ -284,6 +284,6 @@ export function ProfileSetup() {
   }, [])
 
   // Never interrupt a session in progress.
-  if (!me?.freeChange || dismissed || pathname === '/workout') return null
+  if (!needsSetup(me) || dismissed || pathname === '/workout') return null
   return <SetupSheet onClose={close} />
 }

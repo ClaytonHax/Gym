@@ -7,6 +7,7 @@ import { useSettings } from '../../contexts/SettingsContext'
 import { useSocial } from '../../contexts/SocialContext'
 import { useActiveWorkout } from '../../hooks/useActiveWorkout'
 import { setHapticsEnabled } from '../../lib/haptics'
+import { needsSetup } from '../../lib/social'
 import type { Profile } from '../../types'
 
 const TOUR_ID = 'train-v2'
@@ -354,7 +355,7 @@ export function TrainTourHost() {
 
   // Not while ProfileSetup is showing (freeChange), and not mid-workout on the Train screen.
   const eligible =
-    !trainTourSeen(profile) && Boolean(me) && !me?.freeChange && !(active && pathname === '/workout')
+    !trainTourSeen(profile) && Boolean(me) && !needsSetup(me) && !(active && pathname === '/workout')
 
   useEffect(() => {
     if (!eligible || open || autoShown.current) return
