@@ -80,12 +80,7 @@ async function run(request) {
 async function sendTest(bot, username) {
   const summary = { ok: true, test: true, pushes: 0, errors: 0 }
   const entry = await readAs(bot.idToken, `usernames/${username.toLowerCase()}`)
-  if (!entry?.uid) {
-    // TEMP: help find the right handle (secret-gated); remove after use.
-    const all = await listAll(bot.idToken, 'usernames', { pageSize: 100, maxDocs: 2000 })
-    const q = username.toLowerCase().slice(0, 5)
-    return { ok: false, error: 'unknown username', total: all.length, similar: all.map((d) => d.id).filter((n) => n.includes(q) || n.includes('clay')).slice(0, 10) }
-  }
+  if (!entry?.uid) return { ok: false, error: 'unknown username' }
   const text = 'Test reminder: this is how the "finish your workout" nudge will look.'
   const day = localParts('UTC').day
   summary.created = await deliver(bot, entry.uid, { type: 'finish_workout', text }, `finish_workout_${bot.uid}_${day}`, summary)
