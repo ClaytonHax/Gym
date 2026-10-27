@@ -4,6 +4,7 @@
 // and sends Web Push to them, and "nudge them?" notifications to their friends.
 // No admin SDK / service account. Env: CRON_SECRET, BOT_EMAIL, BOT_PASSWORD,
 // VITE_FIREBASE_API_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY.
+import { timingSafeEqual } from 'node:crypto'
 import { createWithTimestamp, listAll, readAs, signIn } from './_lib/firestore.js'
 import { evaluateWatch, forgottenWorkout, localParts, missedPlanDay, reminderHour } from './_lib/streakLogic.js'
 import { message, pushConfigured, sendToSubs } from './_lib/webpush.js'
@@ -30,9 +31,16 @@ export async function GET(request) {
   }
 }
 
+/** Constant-time compare so the secret can't be guessed from response timing. */
+function sameSecret(got, want) {
+  const a = Buffer.from(got)
+  const b = Buffer.from(want)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 async function run(request) {
   const secret = process.env.CRON_SECRET
-  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+  if (!secret || !sameSecret(request.headers.get('authorization') ?? '', `Bearer ${secret}`)) {
     return json(401, { error: 'unauthorized' })
   }
   const { BOT_EMAIL, BOT_PASSWORD } = process.env
@@ -43,6 +51,7 @@ async function run(request) {
 
   // Manual check (needs the cron secret): /api/streak-check?test=<username> sends that user one real reminder.
   const testUser = new URL(request.url).searchParams.get('test')
+  if (testUser !== null && !/^[A-Za-z0-9_.-]{1,30}$/.test(testUser)) return json(400, { error: 'bad username' })
   if (testUser) return json(200, await sendTest(bot, testUser))
   const watches = await listAll(bot.idToken, 'streakWatch', { pageSize: 100, maxDocs: 3000 })
   const summary = { ok: true, users: watches.length, risk: 0, lost: 0, unfinished: 0, missed: 0, friendPings: 0, pushes: 0, errors: 0, skipped: 0 }
