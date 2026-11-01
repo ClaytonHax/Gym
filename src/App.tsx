@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
-import { Spinner } from './components/ui'
+import { WeightLoader } from './components/ui'
 import { OpenInAppHint } from './components/OpenInAppHint'
 import { Icon } from './components/Icon'
 import { ActiveWorkoutProvider } from './contexts/ActiveWorkoutContext'
@@ -78,9 +78,8 @@ function Gate() {
 
   if (loading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-brand-500">
-        <Spinner size={32} />
-        <span className="sr-only">Loading</span>
+      <div className="flex min-h-dvh items-center justify-center">
+        <WeightLoader />
       </div>
     )
   }

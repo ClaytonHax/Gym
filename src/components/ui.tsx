@@ -647,6 +647,44 @@ export function Spinner({ size = 20, className = '' }: { size?: number; classNam
   )
 }
 
+/**
+ * Full-screen loader: a dumbbell, kettlebell, plate and barbell take turns dropping in,
+ * landing with a squash and lifting away. Reduced motion shows the dumbbell, still.
+ */
+export function WeightLoader({ label = 'Warming up' }: { label?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-3" role="status">
+      <div className="weight-loader text-brand-500" aria-hidden="true">
+        <svg className="wl-item" viewBox="0 0 48 48" fill="currentColor">
+          <rect x="7" y="17" width="5" height="14" rx="1.5" />
+          <rect x="12" y="12" width="5" height="24" rx="1.5" />
+          <rect x="17" y="22" width="14" height="4" rx="1" />
+          <rect x="31" y="12" width="5" height="24" rx="1.5" />
+          <rect x="36" y="17" width="5" height="14" rx="1.5" />
+        </svg>
+        <svg className="wl-item" viewBox="0 0 48 48" fill="currentColor">
+          <path d="M17 21v-5a7 7 0 0 1 14 0v5" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+          <circle cx="24" cy="29" r="11" />
+          <rect x="16" y="37" width="16" height="4" rx="2" />
+        </svg>
+        <svg className="wl-item" viewBox="0 0 48 48" fill="currentColor">
+          <path fillRule="evenodd" d="M24 6a18 18 0 1 1 0 36 18 18 0 0 1 0-36Zm0 14a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" />
+          <circle cx="24" cy="24" r="11.5" fill="none" stroke="var(--color-canvas)" strokeWidth="1.5" opacity="0.5" />
+        </svg>
+        <svg className="wl-item" viewBox="0 0 48 48" fill="currentColor">
+          <rect x="2" y="22.5" width="44" height="3" rx="1.5" />
+          <rect x="7" y="10" width="4" height="28" rx="1.5" />
+          <rect x="11" y="14" width="3.5" height="20" rx="1.5" />
+          <rect x="33.5" y="14" width="3.5" height="20" rx="1.5" />
+          <rect x="37" y="10" width="4" height="28" rx="1.5" />
+        </svg>
+        <span className="wl-shadow" />
+      </div>
+      <span className="font-display text-sm font-semibold uppercase tracking-[0.2em] text-fg-muted">{label}</span>
+    </div>
+  )
+}
+
 /** Reserves layout space while data loads, so content never jumps in. */
 export function Skeleton({
   className = '',
