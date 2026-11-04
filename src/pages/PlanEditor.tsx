@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ExerciseListEditor } from '../components/ExerciseListEditor'
-import { Icon } from '../components/Icon'
-import { Button, IconButton, Segmented, Sheet, Skeleton } from '../components/ui'
+import { Icon, type IconName } from '../components/Icon'
+import { MuscleDots } from '../components/MuscleDots'
+import { Button, Field, IconButton, Sheet, Skeleton } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { getTemplate } from '../data/programs'
+import { HOLD_HANDLE_CLASS, useHoldToReorder } from '../hooks/useHoldToReorder'
 import { useRoutines } from '../hooks/useRoutines'
 import { usePlans } from '../hooks/usePlans'
 import { usePublicPlan, usePublicPlanActions } from '../hooks/usePublicPlans'
@@ -56,10 +58,21 @@ export function PlanEditor() {
   const [editingDay, setEditingDay] = useState<string | null>(null)
   // Exercises of the day sheet as they were when it opened, to offer "keep original".
   const [editSnapshot, setEditSnapshot] = useState<PlanExercise[] | null>(null)
+  // Day whose actions sheet (move, duplicate, rest, delete) is open.
+  const [actionsDay, setActionsDay] = useState<string | null>(null)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const baseline = useRef('')
   const discarding = useRef(false)
+  const reorder = useHoldToReorder((from, to) =>
+    setDraft((d) => {
+      if (!d) return d
+      const days = [...d.days]
+      const [moved] = days.splice(from, 1)
+      days.splice(to, 0, moved)
+      return { ...d, days }
+    })
+  )
 
   // Seed the draft once: from a template, a blank plan, or the saved plan being edited.
   useEffect(() => {
@@ -133,6 +146,10 @@ export function PlanEditor() {
 
   const { workouts, length } = planSummary(draft)
   const editing = draft.days.find((d) => d.id === editingDay) ?? null
+  const actions = draft.days.find((d) => d.id === actionsDay) ?? null
+  const actionsIndex = actions ? draft.days.indexOf(actions) : -1
+  const changedSinceOpen =
+    !!editing && !!editSnapshot && JSON.stringify(editing.exercises) !== JSON.stringify(editSnapshot)
 
   function patchDraft(patch: Partial<Draft>) {
     setDraft((d) => (d ? { ...d, ...patch } : d))
@@ -161,6 +178,22 @@ export function PlanEditor() {
       return { ...d, days }
     })
     toast(`Duplicated as day ${i + 2}`)
+  }
+
+  function deleteDay(day: PlanDay) {
+    if (draft!.days.length <= 1) return
+    const prev = draft!.days
+    patchDraft({ days: prev.filter((d) => d.id !== day.id) })
+    setActionsDay(null)
+    toast(`Deleted ${day.kind === 'rest' ? 'rest day' : day.name || 'day'}`, 'info', {
+      action: { label: 'Undo', onClick: () => patchDraft({ days: prev }) },
+    })
+  }
+
+  function addWorkoutDay() {
+    const day = newWorkoutDay(`Day ${draft!.days.length + 1}`)
+    patchDraft({ days: [...draft!.days, day] })
+    openDay(day)
   }
 
   function openDay(day: PlanDay) {
@@ -249,7 +282,8 @@ export function PlanEditor() {
 
   return (
     <div className="animate-rise flex flex-col gap-5">
-      <header className="flex items-center gap-1">
+      {/* Sticky so Save stays in reach on a long plan; the negative margin bleeds over main's padding. */}
+      <header className="sticky top-0 z-20 -mx-4 -mt-4 flex items-center gap-1 bg-[var(--color-canvas)] px-4 pb-2 pt-4">
         <IconButton icon="chevron-left" label="Back" onClick={leave} className="-ml-2" />
         <div className="min-w-0 flex-1">
           <h1 className="num-display truncate text-3xl">{isNew ? 'New plan' : isPublic ? 'Edit published plan' : 'Edit plan'}</h1>
@@ -257,6 +291,11 @@ export function PlanEditor() {
             {rotationText(draft)}
           </p>
         </div>
+        {dirty && !isNew ? (
+          <Button size="sm" variant="go" loading={saving} onClick={() => commit(false)}>
+            Save
+          </Button>
+        ) : null}
       </header>
 
       {saved?.sharedFrom && !saved.publishedId && !saved.sharedFrom.customized ? (
@@ -283,92 +322,71 @@ export function PlanEditor() {
             {length === 1 ? 'Repeats every day' : `After day ${length}, it starts over at day 1`}
           </p>
         </div>
-        <ol className="flex flex-col gap-3">
+        <ol className="flex flex-col gap-2">
           {draft.days.map((day, i) => {
             const rest = day.kind === 'rest'
+            const grip = (
+              <div
+                {...reorder.handleProps(i)}
+                className={`grid w-9 shrink-0 cursor-grab touch-pan-y place-items-center self-stretch text-[var(--color-fg-muted)] ${HOLD_HANDLE_CLASS}`}
+                title="Hold to reorder"
+                aria-hidden
+              >
+                <Icon name="grip" size={18} />
+              </div>
+            )
+            const more = (
+              <IconButton
+                icon="more"
+                label={`Day ${i + 1} options`}
+                onClick={() => setActionsDay(day.id)}
+                className="mr-1 self-center"
+              />
+            )
             return (
               <li
                 key={day.id}
-                className={`card p-3 ${rest ? 'border-rest/50' : 'border-l-4 border-l-brand-500'}`}
+                {...reorder.itemProps(i)}
+                className={`card flex items-stretch ${rest ? 'min-h-12 border-rest/50' : 'border-l-4 border-l-brand-500'}`}
               >
-                <div className="flex items-center gap-1">
-                  <span
-                    className={`tabular grid size-9 shrink-0 place-items-center rounded-lg font-display text-lg font-bold ${
-                      rest ? 'bg-rest/15 text-rest' : 'bg-brand-500/15 text-brand-400'
-                    }`}
-                    aria-hidden
-                  >
-                    {i + 1}
-                  </span>
-                  {rest ? (
-                    <p className="flex min-h-11 flex-1 items-center gap-2 px-2 font-semibold text-rest">
-                      <Icon name="moon" size={18} />
-                      Rest day
-                    </p>
-                  ) : (
-                    <input
-                      value={day.name}
-                      onChange={(e) => patchDay(day.id, { name: e.target.value })}
-                      aria-label={`Name of day ${i + 1}`}
-                      className="min-h-11 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 font-display text-xl font-semibold outline-none focus:border-brand-500"
-                    />
-                  )}
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-2">
-                  <div className="mr-1 min-w-[10rem] flex-1">
-                    <Segmented
-                      label={`Day ${i + 1} type`}
-                      value={day.kind}
-                      onChange={(k) => setKind(day, k)}
-                      options={[
-                        { value: 'workout', label: 'Workout' },
-                        { value: 'rest', label: 'Rest' },
-                      ]}
-                    />
-                  </div>
-                  <IconButton
-                    icon="arrow-up"
-                    label={`Move day ${i + 1} up`}
-                    disabled={i === 0}
-                    onClick={() => moveDay(i, -1)}
-                  />
-                  <IconButton
-                    icon="arrow-down"
-                    label={`Move day ${i + 1} down`}
-                    disabled={i === draft.days.length - 1}
-                    onClick={() => moveDay(i, 1)}
-                  />
-                  <IconButton
-                    icon="copy"
-                    label={`Duplicate day ${i + 1}`}
-                    onClick={() => duplicateDay(i)}
-                  />
-                  <IconButton
-                    icon="trash"
-                    label={`Remove day ${i + 1}`}
-                    disabled={draft.days.length <= 1}
-                    onClick={() => patchDraft({ days: draft.days.filter((d) => d.id !== day.id) })}
-                    className="hover:bg-rose-500/15 hover:text-rose-400"
-                  />
-                </div>
-
-                {rest ? null : (
+                {grip}
+                {rest ? (
+                  <p className="flex min-h-12 flex-1 items-center gap-2 py-1 font-semibold text-rest">
+                    <span className="tabular w-5 text-center text-sm opacity-70" aria-hidden>
+                      {i + 1}
+                    </span>
+                    <Icon name="moon" size={18} />
+                    Rest day
+                  </p>
+                ) : (
                   <button
                     type="button"
                     onClick={() => openDay(day)}
-                    className="mt-2 flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--color-surface-2)] px-3 text-left transition-colors duration-200 hover:bg-[var(--color-line)]"
+                    aria-label={`Edit day ${i + 1}, ${day.name || 'Workout'}`}
+                    className="flex min-h-16 min-w-0 flex-1 items-center gap-3 py-3 text-left"
                   >
-                    <Icon name="dumbbell" size={18} className="shrink-0 text-brand-400" />
-                    <span className="tabular min-w-0 flex-1 truncate text-sm">
-                      {day.exercises.length === 0
-                        ? 'Add exercises'
-                        : daySummary(day.exercises)}
+                    <span
+                      className="tabular grid size-9 shrink-0 place-items-center rounded-lg bg-brand-500/15 font-display text-lg font-bold text-brand-400"
+                      aria-hidden
+                    >
+                      {i + 1}
                     </span>
-                    <span className="text-xs font-semibold text-brand-400">Edit</span>
-                    <Icon name="chevron-right" size={16} className="text-[var(--color-fg-muted)]" />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate font-display text-xl font-semibold">{day.name || 'Workout'}</span>
+                      {day.exercises.length === 0 ? (
+                        <span className="text-sm font-semibold text-brand-400">No exercises yet — tap to add</span>
+                      ) : (
+                        <>
+                          <span className="tabular truncate text-sm text-[var(--color-fg-muted)]">
+                            {daySummary(day.exercises)}
+                          </span>
+                          <MuscleDots exercises={day.exercises} />
+                        </>
+                      )}
+                    </span>
                   </button>
                 )}
+                {more}
               </li>
             )
           })}
@@ -378,9 +396,7 @@ export function PlanEditor() {
           <Button
             variant="secondary"
             icon="plus"
-            onClick={() =>
-              patchDraft({ days: [...draft.days, newWorkoutDay(`Day ${draft.days.length + 1}`)] })
-            }
+            onClick={addWorkoutDay}
           >
             Workout day
           </Button>
@@ -452,25 +468,115 @@ export function PlanEditor() {
       <Sheet
         open={editing !== null}
         onClose={closeDay}
-        title={editing ? `${editing.name || 'Workout'} exercises` : 'Exercises'}
+        size="full"
+        title={editing ? editing.name || 'Workout' : 'Workout'}
         footer={
-          <div className="flex flex-col gap-2">
-            <Button full onClick={closeDay}>
-              Done
-            </Button>
-            {editing && editSnapshot && JSON.stringify(editing.exercises) !== JSON.stringify(editSnapshot) ? (
-              <Button full variant="secondary" onClick={() => void saveEditsAsAlt()}>
-                Keep original, save edits as copy
-              </Button>
-            ) : null}
-          </div>
+          <Button full onClick={closeDay}>
+            Done
+          </Button>
         }
       >
         {editing ? (
-          <ExerciseListEditor
-            items={editing.exercises}
-            onChange={(exercises) => patchDay(editing.id, { exercises })}
-          />
+          <div className="flex flex-col gap-4">
+            <input
+              value={editing.name}
+              onChange={(e) => patchDay(editing.id, { name: e.target.value })}
+              placeholder="Workout name"
+              aria-label="Workout name"
+              maxLength={40}
+              enterKeyHint="done"
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              className="min-h-12 w-full rounded-xl border border-transparent bg-transparent px-2 font-display text-2xl font-semibold outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500"
+            />
+            {editing.exercises.length > 0 ? (
+              <div className="flex flex-col gap-1.5 px-2">
+                <p className="tabular text-sm text-[var(--color-fg-muted)]">{daySummary(editing.exercises)}</p>
+                <MuscleDots exercises={editing.exercises} />
+              </div>
+            ) : null}
+            <ExerciseListEditor
+              items={editing.exercises}
+              onChange={(exercises) => patchDay(editing.id, { exercises })}
+            />
+            {changedSinceOpen ? (
+              <div className="flex flex-col items-start gap-1 border-t border-[var(--color-line)] pt-3">
+                <p className="text-xs text-[var(--color-fg-muted)]">You changed this day's exercises.</p>
+                <button
+                  type="button"
+                  onClick={() => editSnapshot && patchDay(editing.id, { exercises: editSnapshot })}
+                  className="min-h-11 text-sm font-semibold text-brand-400 underline-offset-2 hover:underline"
+                >
+                  Undo changes to this day
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveEditsAsAlt()}
+                  className="min-h-11 text-left text-sm font-semibold text-brand-400 underline-offset-2 hover:underline"
+                >
+                  Keep original, save edits as a routine
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Sheet>
+
+      <Sheet
+        open={actions !== null}
+        onClose={() => setActionsDay(null)}
+        title={actions ? (actions.kind === 'rest' ? 'Rest day' : actions.name || 'Workout') : 'Day'}
+      >
+        {actions ? (
+          <div className="flex flex-col gap-3">
+            {actions.kind === 'workout' ? (
+              <Field
+                label="Day name"
+                value={actions.name}
+                maxLength={40}
+                enterKeyHint="done"
+                onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                onChange={(e) => patchDay(actions.id, { name: e.target.value })}
+              />
+            ) : null}
+            <div className="flex flex-col gap-2">
+              <ActionRow icon="arrow-up" disabled={actionsIndex === 0} onClick={() => moveDay(actionsIndex, -1)}>
+                Move up
+              </ActionRow>
+              <ActionRow
+                icon="arrow-down"
+                disabled={actionsIndex === draft.days.length - 1}
+                onClick={() => moveDay(actionsIndex, 1)}
+              >
+                Move down
+              </ActionRow>
+              <ActionRow
+                icon="copy"
+                onClick={() => {
+                  duplicateDay(actionsIndex)
+                  setActionsDay(null)
+                }}
+              >
+                Duplicate
+              </ActionRow>
+              <ActionRow
+                icon={actions.kind === 'rest' ? 'dumbbell' : 'moon'}
+                onClick={() => {
+                  setKind(actions, actions.kind === 'rest' ? 'workout' : 'rest')
+                  setActionsDay(null)
+                }}
+              >
+                {actions.kind === 'rest' ? 'Make it a workout day' : 'Make it a rest day'}
+              </ActionRow>
+              <ActionRow
+                icon="trash"
+                danger
+                disabled={draft.days.length <= 1}
+                onClick={() => deleteDay(actions)}
+              >
+                Delete day
+              </ActionRow>
+            </div>
+          </div>
         ) : null}
       </Sheet>
 
@@ -513,5 +619,34 @@ export function PlanEditor() {
         <p className="text-[var(--color-fg-muted)]">You changed this plan but have not saved it yet.</p>
       </Sheet>
     </div>
+  )
+}
+
+/** Full-width tappable row for the day actions sheet. */
+function ActionRow({
+  icon,
+  danger,
+  disabled,
+  onClick,
+  children,
+}: {
+  icon: IconName
+  danger?: boolean
+  disabled?: boolean
+  onClick: () => void
+  children: string
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex min-h-12 w-full items-center gap-3 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-4 text-left font-semibold transition-colors duration-200 hover:bg-[var(--color-line)] disabled:opacity-40 motion-reduce:transition-none ${
+        danger ? 'text-rose-400' : ''
+      }`}
+    >
+      <Icon name={icon} size={20} />
+      {children}
+    </button>
   )
 }

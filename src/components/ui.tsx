@@ -430,6 +430,9 @@ const EDITABLE = 'input, textarea, select, [contenteditable="true"]'
  * `pinned` (the search input) stays put under the header and `children` scroll
  * beneath it, so results remain visible above the keyboard.
  */
+/** Open sheets, oldest first. Only the last entry (the topmost sheet) handles keys. */
+const openSheets: symbol[] = []
+
 export function Sheet({
   open,
   onClose,
@@ -484,8 +487,12 @@ export function Sheet({
     const previouslyFocused = document.activeElement as HTMLElement | null
     const { overflow } = document.body.style
     document.body.style.overflow = 'hidden'
+    const id = Symbol('sheet')
+    openSheets.push(id)
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Only the topmost open sheet handles Escape and the Tab focus trap.
+      if (openSheets[openSheets.length - 1] !== id) return
       if (e.key === 'Escape') {
         e.stopPropagation()
         onCloseRef.current()
@@ -523,6 +530,8 @@ export function Sheet({
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      const at = openSheets.indexOf(id)
+      if (at !== -1) openSheets.splice(at, 1)
       cancelAnimationFrame(raf)
       document.body.style.overflow = overflow
       previouslyFocused?.focus?.()

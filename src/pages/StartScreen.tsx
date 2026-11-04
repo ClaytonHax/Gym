@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { ExercisePicker } from '../components/ExercisePicker'
 import { RoutineBuilder } from '../components/RoutineBuilder'
+import { MuscleDots } from '../components/MuscleDots'
 import { StarterPlans } from '../components/plans'
 import { ConfirmSheet, IconButton, Sheet, Skeleton } from '../components/ui'
 import { TrainStatusBar } from '../components/train/TrainStatusBar'
@@ -41,18 +42,6 @@ function dayMeta(exercises: PlanExercise[]) {
 function metaLine(exercises: PlanExercise[]): string {
   const m = dayMeta(exercises)
   return `${exercises.length} exercises · ${m.sets} sets · ~${fmtDuration(m.minutes * 60)} · ~+${m.xp} XP`
-}
-
-/** Small dots, one per distinct muscle, for a compact "what's in this" row. */
-function MuscleDots({ exercises }: { exercises: PlanExercise[] }) {
-  const muscles = [...new Set(exercises.map((e) => e.muscle))].slice(0, 6)
-  return (
-    <span className="flex gap-1" aria-hidden>
-      {muscles.map((m) => (
-        <span key={m} className="size-2.5 rounded-full" style={{ backgroundColor: MUSCLE_COLORS[m] }} />
-      ))}
-    </span>
-  )
 }
 
 function MuscleChips({ exercises }: { exercises: PlanExercise[] }) {

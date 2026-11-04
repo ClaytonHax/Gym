@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ExerciseListEditor } from './ExerciseListEditor'
 import { Button, Sheet } from './ui'
+import { daySummary } from '../lib/plans'
 import { useRoutines } from '../hooks/useRoutines'
 import { useToast } from '../contexts/ToastContext'
 import type { PlanExercise, Routine } from '../types'
@@ -60,24 +61,24 @@ export function RoutineBuilder({
         open={open}
         onClose={onClose}
         title={routine ? 'Edit routine' : 'New routine'}
+        size="full"
         footer={
           <Button full variant="go" loading={saving} onClick={save}>
             Save routine
           </Button>
         }
       >
-        <div className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1.5 text-sm font-semibold">
-            Name
-            <input
-              enterKeyHint="done"
-              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Arms & Abs"
-              className="min-h-12 rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 outline-none focus:border-brand-500"
-            />
-          </label>
+        <div className="flex flex-col gap-3">
+          <input
+            enterKeyHint="done"
+            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Routine name"
+            aria-label="Routine name"
+            className="min-h-12 w-full rounded-xl border border-transparent bg-transparent px-1 font-display text-2xl font-semibold outline-none placeholder:text-[var(--color-fg-muted)] focus:border-brand-500 focus:bg-[var(--color-surface-2)] focus:px-3"
+          />
+          {items.length > 0 ? <p className="px-1 text-sm text-[var(--color-fg-muted)]">{daySummary(items)}</p> : null}
 
           <ExerciseListEditor items={items} onChange={setItems} />
         </div>
