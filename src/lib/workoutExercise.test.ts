@@ -7,6 +7,7 @@ import {
   stripKeys,
   unfinishedSummary,
   withKeys,
+  withTargetReps,
 } from './workoutExercise'
 import type { WorkoutExercise } from '../types'
 
@@ -142,5 +143,25 @@ describe('swap and suggestions', () => {
     const last = [{ weightKg: 0, reps: 0, done: true, durationSec: 600, speedKmh: 6, inclinePct: 2 }]
     expect(timedPlaceholders(ex, 1, last)).toEqual({ durationSec: 300, speedKmh: 8 })
     expect(timedPlaceholders(ex, 0, last)).toEqual({ durationSec: 600, speedKmh: 6, inclinePct: 2 })
+  })
+})
+
+describe('withTargetReps', () => {
+  const ex: WorkoutExercise = {
+    ...bench,
+    sets: [
+      { weightKg: 20, reps: 10, done: true, warmup: true, targetReps: '12' },
+      { weightKg: 60, reps: 8, done: true, targetReps: '5-8' },
+      { weightKg: 60, reps: 0, done: false },
+    ],
+  }
+  it('sets the target on every working set and leaves warmups alone', () => {
+    const out = withTargetReps(ex, ' 8-10 ')
+    expect(out.sets.map((s) => s.targetReps)).toEqual(['12', '8-10', '8-10'])
+    expect(out.sets[1].reps).toBe(8)
+  })
+  it('clears the target when blank', () => {
+    const out = withTargetReps(ex, '')
+    expect(out.sets.map((s) => 'targetReps' in s)).toEqual([true, false, false])
   })
 })

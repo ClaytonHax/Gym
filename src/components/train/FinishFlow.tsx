@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode 
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon'
 import { Spinner } from '../ui'
-import { Toggle } from '../ui'
+import { Segmented, Toggle } from '../ui'
 import { Confetti } from './Celebrate'
 import { haptic } from '../../lib/haptics'
 import { fmtMinutes } from '../../lib/workoutExercise'
@@ -30,7 +30,13 @@ export interface FinishFlowProps {
   proofSlot: ReactNode
   saveAsRoutine: boolean
   onSaveAsRoutine: (b: boolean) => void
+  /** Set when the session came from a plan day that the person changed. */
+  planChange?: { dayName: string; planName: string; canUpdate: boolean }
+  planChoice?: PlanChoice
+  onPlanChoice?: (c: PlanChoice) => void
 }
+
+export type PlanChoice = 'once' | 'update' | 'alt'
 
 const COUNT_MS = 900
 const FOCUSABLE =
@@ -158,6 +164,9 @@ export function FinishFlow({
   proofSlot,
   saveAsRoutine,
   onSaveAsRoutine,
+  planChange,
+  planChoice = 'once',
+  onPlanChoice,
 }: FinishFlowProps) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const titleId = useId()
@@ -374,12 +383,36 @@ export function FinishFlow({
                 {proofSlot}
               </div>
             ) : null}
-            <Toggle
-              checked={saveAsRoutine}
-              onChange={onSaveAsRoutine}
-              label="Save this workout to reuse later"
-              description="It will show up under My routines on the Train tab."
-            />
+            {planChange && onPlanChoice ? (
+              <div>
+                <p className="mb-1.5 text-sm font-semibold">You changed {planChange.dayName}</p>
+                <Segmented<PlanChoice>
+                  label="What to do with the changes"
+                  size="sm"
+                  value={planChoice}
+                  onChange={onPlanChoice}
+                  options={[
+                    { value: 'once', label: 'This time only' },
+                    ...(planChange.canUpdate ? [{ value: 'update' as const, label: 'Update day' }] : []),
+                    { value: 'alt', label: 'Save as alt' },
+                  ]}
+                />
+                <p className="mt-1.5 text-sm text-[var(--color-fg-muted)]">
+                  {planChoice === 'update'
+                    ? `${planChange.dayName} in ${planChange.planName} will use this workout from now on.`
+                    : planChoice === 'alt'
+                      ? `Saved as “${planChange.dayName} (alt)” under My routines. Your plan stays the same.`
+                      : 'Your plan stays the same.'}
+                </p>
+              </div>
+            ) : (
+              <Toggle
+                checked={saveAsRoutine}
+                onChange={onSaveAsRoutine}
+                label="Save this workout to reuse later"
+                description="It will show up under My routines on the Train tab."
+              />
+            )}
             {saveError ? (
               <p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-300">
                 {saveError}

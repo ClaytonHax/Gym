@@ -14,7 +14,7 @@ const CARDIO_FIELD_OPTIONS: Array<{ field: CardioField; label: string }> = [
 
 /** Edit a custom exercise's name, muscle, equipment and tracking. Past workouts keep their old name. */
 export function EditExerciseSheet({ exercise, onClose }: { exercise: Exercise | null; onClose: () => void }) {
-  const { updateExercise } = useExercises()
+  const { exercises, updateExercise } = useExercises()
   const toast = useToast()
   const [name, setName] = useState('')
   const [muscle, setMuscle] = useState<MuscleGroup>('Other')
@@ -23,6 +23,15 @@ export function EditExerciseSheet({ exercise, onClose }: { exercise: Exercise | 
   const [fields, setFields] = useState<CardioField[]>([])
   const [saving, setSaving] = useState(false)
   const timed = exercise?.logBy === 'time'
+
+  // Names are unique ignoring case, checked against every other exercise (built-in or custom).
+  const trimmedName = name.trim()
+  const duplicate =
+    exercise !== null &&
+    trimmedName !== '' &&
+    exercises.some(
+      (e) => e.id !== exercise.id && e.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    )
 
   useEffect(() => {
     if (!exercise) return
@@ -35,11 +44,11 @@ export function EditExerciseSheet({ exercise, onClose }: { exercise: Exercise | 
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
-    if (!exercise || !name.trim()) return
+    if (!exercise || !trimmedName || duplicate) return
     setSaving(true)
     try {
       await updateExercise(exercise.id, {
-        name: name.trim(),
+        name: trimmedName,
         muscle,
         equipment: equipment.trim() || 'Other',
         tracksWeight: timed ? false : tracksWeight,
@@ -58,7 +67,21 @@ export function EditExerciseSheet({ exercise, onClose }: { exercise: Exercise | 
   return (
     <Sheet open={exercise !== null} onClose={onClose} title="Edit exercise">
       <form onSubmit={save} className="flex flex-col gap-4">
-        <Field label="Exercise name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <div className="flex flex-col gap-1.5">
+          <Field
+            label="Exercise name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            hint="Past workouts keep the old name."
+            aria-invalid={duplicate || undefined}
+            required
+          />
+          {duplicate ? (
+            <p role="alert" className="text-xs font-medium text-rose-400">
+              You already have an exercise called “{trimmedName}”.
+            </p>
+          ) : null}
+        </div>
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="edit-muscle"
@@ -133,7 +156,7 @@ export function EditExerciseSheet({ exercise, onClose }: { exercise: Exercise | 
           <Button type="button" variant="secondary" full onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" full loading={saving}>
+          <Button type="submit" full loading={saving} disabled={duplicate}>
             Save changes
           </Button>
         </div>

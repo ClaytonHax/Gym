@@ -17,6 +17,7 @@ import {
   ChallengeCard,
   displayOf,
   fmtMetric,
+  LevelChip,
   NewChallengeSheet,
   NotificationBell,
   NudgeSheet,
@@ -42,6 +43,7 @@ import {
   rankWithTies,
   whoLabel,
   friendAtRisk,
+  levelOfStats,
   METRICS,
   metricValue,
   type BoardMetric,
@@ -61,11 +63,14 @@ const TABS: Array<{ value: Tab; label: string }> = [
   { value: 'friends', label: 'Friends' },
 ]
 
-const BOARD_METRICS: BoardMetric[] = ['workouts', 'days', 'volume', 'sets', 'minutes', 'streak']
+const BOARD_METRICS: BoardMetric[] = ['workouts', 'days', 'volume', 'sets', 'minutes', 'streak', 'xp']
 
 const MEDAL = ['text-amber-400', 'text-ink-300', 'text-orange-700']
 
-const ordinalHint = (metric: BoardMetric) => (metric === 'streak' ? 'Keep it going.' : 'Break the tie.')
+/** Metrics that aren't per-period: shown as one running total. */
+const ALL_TIME_ONLY = new Set<BoardMetric>(['streak', 'xp'])
+
+const ordinalHint = (metric: BoardMetric) => (metric === 'streak' ? 'Keep it going.' : metric === 'xp' ? 'Keep training.' : 'Break the tie.')
 
 interface Entry {
   uid: string
@@ -99,7 +104,7 @@ function Leaderboard({ entries, onNudge }: { entries: Entry[]; onNudge: (p: Publ
 
   return (
     <div className="flex flex-col gap-4">
-      {metric !== 'streak' ? (
+      {!ALL_TIME_ONLY.has(metric) ? (
         <Segmented
           label="Period"
           value={period}
@@ -133,7 +138,7 @@ function Leaderboard({ entries, onNudge }: { entries: Entry[]; onNudge: (p: Publ
       <section aria-label={`${METRICS[metric].label} leaderboard`} className="hero rounded-2xl p-5 text-ink-950">
         <p className="text-[11px] font-bold uppercase tracking-[0.16em] opacity-80">
           {METRICS[metric].label}
-          {metric === 'streak' ? '' : period === 'week' ? ' · this week' : period === 'month' ? ' · this month' : ' · all time'}
+          {ALL_TIME_ONLY.has(metric) ? '' : period === 'week' ? ' · this week' : period === 'month' ? ' · this month' : ' · all time'}
         </p>
         <p className="mt-1 font-display text-5xl font-bold leading-none">
           {myRank > 0 ? `${myTied ? 'T' : '#'}${myRank}` : '–'}
@@ -157,7 +162,7 @@ function Leaderboard({ entries, onNudge }: { entries: Entry[]; onNudge: (p: Publ
       <ol className="card flex flex-col p-2">
         {ranked.map((e, i) => {
           const { name, handle } = displayOf(e.profile)
-          const idle = !e.isMe && period === 'week' && metric !== 'streak' && e.value === 0
+          const idle = !e.isMe && period === 'week' && !ALL_TIME_ONLY.has(metric) && e.value === 0
           const row = (
             <>
               <span className="grid w-7 shrink-0 place-items-center">
@@ -175,7 +180,10 @@ function Leaderboard({ entries, onNudge }: { entries: Entry[]; onNudge: (p: Publ
               <Avatar uid={e.uid} name={e.isMe ? 'You' : name} size={40} ring={e.isMe} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-2">
-                  <span className="truncate font-semibold">{e.isMe ? 'You' : name}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate font-semibold">{e.isMe ? 'You' : name}</span>
+                    <LevelChip level={levelOfStats(e.stats)?.level} />
+                  </span>
                   <span className="tabular shrink-0 font-display text-xl font-bold">
                     {fmtMetric(metric, e.value, profile.unit)}
                   </span>
@@ -346,6 +354,7 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
               const idle = (daysSince(f.stats?.lastWorkoutAt) ?? 99) >= 2
               const streak = liveStreak(f.stats)
               const risk = friendAtRisk(f.stats)
+              const lv = levelOfStats(f.stats)
               return (
                 <li key={f.uid} className="flex items-center gap-1">
                   <Link
@@ -356,7 +365,7 @@ function FriendsTab({ onAdd, onNudge }: { onAdd: () => void; onNudge: (p: Public
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{name}</span>
                       <span className="block truncate text-xs text-[var(--color-fg-muted)]">
-                        {handle} · {lastTrainedLabel(f.stats?.lastWorkoutAt)}
+                        {lv ? `Lv ${lv.level} · ` : ''}{handle} · {lastTrainedLabel(f.stats?.lastWorkoutAt)}
                       </span>
                       {risk ? (
                         <span className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-brand-400">

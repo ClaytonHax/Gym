@@ -40,6 +40,7 @@ import {
   whoLabel,
   lastTrainedLabel,
   liveStreak,
+  levelOfStats,
   METRICS,
   metricValue,
   toIso,
@@ -203,6 +204,7 @@ export function FriendProfile() {
   const heat = useMemo(() => pseudoWorkouts(stats), [stats])
   const { name, handle } = displayOf(profile)
   const streak = liveStreak(stats)
+  const lv = levelOfStats(stats)
 
   const myScoreForNew = (metric: ChallengeMetric, days: number) =>
     challengeScore(workouts, metric, dayKey(), dayKey(addDays(new Date(), days - 1)))
@@ -256,6 +258,26 @@ export function FriendProfile() {
             <FriendActionButton target={profile} />
           </div>
         )}
+        {friendNow && lv ? (
+          <div className="mt-3 w-full max-w-xs">
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="font-bold text-xp-400">Level {lv.level}</span>
+              <span className="tabular text-[var(--color-fg-muted)]">
+                {Math.round(lv.xpIntoLevel).toLocaleString()} / {lv.levelSize.toLocaleString()} XP
+              </span>
+            </div>
+            <div
+              role="progressbar"
+              aria-label={`Level ${lv.level} progress`}
+              aria-valuemin={0}
+              aria-valuemax={lv.levelSize}
+              aria-valuenow={Math.round(lv.xpIntoLevel)}
+              className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--color-surface-2)]"
+            >
+              <div className="h-full rounded-full bg-xp-400" style={{ width: `${Math.min(100, lv.progress * 100)}%` }} />
+            </div>
+          </div>
+        ) : null}
       </header>
 
       {friendNow ? (

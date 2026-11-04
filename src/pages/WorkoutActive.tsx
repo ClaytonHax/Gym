@@ -13,7 +13,8 @@ import { ExerciseRail } from '../components/train/ExerciseRail'
 import { ExerciseFocus } from '../components/train/ExerciseFocus'
 import { LogBar, type Feedback } from '../components/train/LogBar'
 import { UpNext } from '../components/train/UpNext'
-import { FinishFlow } from '../components/train/FinishFlow'
+import { TargetRepsSheet } from '../components/train/TargetRepsSheet'
+import { FinishFlow, type PlanChoice } from '../components/train/FinishFlow'
 import { shownValues } from '../components/train/setValues'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
@@ -38,6 +39,7 @@ import { haptic } from '../lib/haptics'
 import { XP_RULES, exercisesXp, levelFor, setXp } from '../lib/xp'
 import { dailyQuests, todayQuestStats } from '../lib/quests'
 import { computeStreaks } from '../lib/streaks'
+import { dayDiffers, exercisesToPlan } from '../lib/planDayDiff'
 import {
   completeUnfinished,
   emptySet,
@@ -51,6 +53,7 @@ import {
   toWorkoutExercise,
   unfinishedSummary,
   withKeys,
+  withTargetReps,
 } from '../lib/workoutExercise'
 import {
   bestDurationByExercise,
@@ -197,7 +200,7 @@ export function WorkoutActive() {
   const { workouts, saveWorkout } = useWorkouts()
   const { saveRoutine } = useRoutines()
   const { latest: latestBody } = useBodyLog()
-  const { activeState, isRestDay } = usePlans()
+  const { activeState, isRestDay, plans, updatePlan } = usePlans()
   const xp = useXp()
   const records = xp.records
   const rest = useRestTimer()
@@ -213,6 +216,9 @@ export function WorkoutActive() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [proofPhoto, setProofPhoto] = useState<PhotoSvg | null>(null)
   const [saveAsRoutine, setSaveAsRoutine] = useState(false)
+  const [planChoice, setPlanChoice] = useState<PlanChoice>('once')
+  // Exercise index whose rep target is being edited.
+  const [targetFor, setTargetFor] = useState<number | null>(null)
   const [platesFor, setPlatesFor] = useState<number | null>(null)
   // Exercise index awaiting a "yes, remove it" because it has logged sets.
   const [removeAsk, setRemoveAsk] = useState<number | null>(null)
@@ -321,6 +327,20 @@ export function WorkoutActive() {
     // elapsed ticks every second so the wall-clock part stays current while the screen is open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, finishOpen, bodyKg, elapsed])
+
+  // A plan-tagged session whose exercises or rep targets no longer match its plan day.
+  const planTarget = useMemo(() => {
+    if (!active?.planId || active.planDayIndex === undefined) return null
+    const plan = plans.find((p) => p.id === active.planId)
+    const day = plan?.days[active.planDayIndex]
+    if (!plan || !day || day.kind !== 'workout' || day.name !== active.planDayName) return null
+    return { plan, day }
+  }, [active?.planId, active?.planDayIndex, active?.planDayName, plans])
+  const planChange = useMemo(() => {
+    if (!active || !planTarget || !dayDiffers(planTarget.day, active.exercises)) return undefined
+    // A day in a plan that's published to the library would need re-publishing, so only offer the copy there.
+    return { dayName: planTarget.day.name, planName: planTarget.plan.name, canUpdate: !planTarget.plan.publishedId }
+  }, [active, planTarget])
 
   const streakStats = useMemo(
     () =>
@@ -601,6 +621,10 @@ export function WorkoutActive() {
     })
   }
 
+  function setTargetReps(index: number, value: string) {
+    updateExercise(index, (e) => withTargetReps(e, value))
+  }
+
   function askSwap(index: number) {
     const ex = active?.exercises[index]
     if (!ex) return
@@ -716,6 +740,8 @@ export function WorkoutActive() {
       // The workout is safe: clear the live session right away so the "in progress" strip,
       // the timer and Resume all disappear everywhere before anything best-effort runs.
       const routineName = active.name.trim() || defaultName()
+      const planExercises = exercisesToPlan(active.exercises.filter((e) => e.sets.some((s) => !s.warmup)))
+      const choice = planChange ? planChoice : 'once'
       save(null)
       setFinishOpen(false)
 
@@ -739,34 +765,35 @@ export function WorkoutActive() {
         })
       }
       setProofPhoto(null)
-      if (saveAsRoutine) {
+      if (choice === 'update' && planTarget && planChange?.canUpdate) {
         try {
-          await saveRoutine({
-            name: routineName,
-            exercises: exercises.map((ex) =>
-              dropUndefined({
-                exerciseId: ex.exerciseId,
-                name: ex.name,
-                muscle: ex.muscle,
-                tracksWeight: ex.tracksWeight,
-                ...(isTimed(ex)
-                  ? {
-                      logBy: 'time' as const,
-                      targets: [],
-                      targetDurationSec: ex.targetDurationSec,
-                      cardioFields: ex.cardioFields,
-                    }
-                  : { targets: ex.sets.filter((s) => !s.warmup).map((s) => s.targetReps ?? '') }),
-                restSec: ex.restSec,
-                supersetId: ex.supersetId,
-              })
-            ),
-          })
+          const { plan } = planTarget
+          const idx = active.planDayIndex as number
+          await updatePlan(
+            plan.id,
+            { name: plan.name, days: plan.days.map((d, i) => (i === idx ? { ...d, exercises: planExercises } : d)) },
+            { customized: !!plan.sharedFrom && !plan.publishedId }
+          )
+          toast(`${planTarget.day.name} updated in ${plan.name}.`)
+        } catch {
+          toast('Workout saved, but we couldn’t update your plan. Edit the day from Plans.', 'error')
+        }
+      } else if (choice === 'alt' && planTarget) {
+        try {
+          await saveRoutine({ name: `${planTarget.day.name} (alt)`, exercises: planExercises })
+          toast(`Saved “${planTarget.day.name} (alt)” under My routines.`)
+        } catch {
+          toast('Workout saved, but we couldn’t save the alternative. You can build one from Train.', 'error')
+        }
+      } else if (!planChange && saveAsRoutine) {
+        try {
+          await saveRoutine({ name: routineName, exercises: exercisesToPlan(exercises) })
         } catch {
           toast('Workout saved, but we couldn’t save it as a routine. You can build one from Train.', 'error')
         }
       }
       setSaveAsRoutine(false)
+      setPlanChoice('once')
       toast('Workout saved. Nice work.')
       navigate(`/history/${id}`, { replace: true })
     } catch {
@@ -941,6 +968,7 @@ export function WorkoutActive() {
             editing={isEditing}
             repsRef={repsRef}
             onMenu={() => setMenuFor(focusIdx)}
+            onEditTarget={() => setTargetFor(focusIdx)}
             onSetChange={(setIndex, p) =>
               updateExercise(focusIdx, (e) => ({
                 ...e,
@@ -1088,6 +1116,17 @@ export function WorkoutActive() {
                   askSwap(i)
                 }}
               />
+              {!isTimed(menuEx) ? (
+                <MenuRow
+                  icon="target"
+                  label="Edit rep target"
+                  onClick={() => {
+                    const i = menuFor
+                    setMenuFor(null)
+                    setTargetFor(i)
+                  }}
+                />
+              ) : null}
               {lastPerformance(workouts, menuEx.exerciseId) ? (
                 <MenuRow
                   icon="copy"
@@ -1266,7 +1305,22 @@ export function WorkoutActive() {
         proofSlot={<PhotoCapture value={proofPhoto} onChange={setProofPhoto} />}
         saveAsRoutine={saveAsRoutine}
         onSaveAsRoutine={setSaveAsRoutine}
+        planChange={planChange}
+        planChoice={planChoice}
+        onPlanChoice={setPlanChoice}
       />
+
+      {targetFor !== null && active.exercises[targetFor] ? (
+        <TargetRepsSheet
+          name={active.exercises[targetFor].name}
+          initial={active.exercises[targetFor].sets.find((s) => !s.warmup && s.targetReps)?.targetReps ?? ''}
+          onClose={() => setTargetFor(null)}
+          onApply={(v) => {
+            setTargetReps(targetFor, v)
+            setTargetFor(null)
+          }}
+        />
+      ) : null}
 
       <ConfirmSheet
         open={removeAsk !== null}

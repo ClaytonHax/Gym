@@ -9,6 +9,7 @@ import { useWorkouts } from '../hooks/useWorkouts'
 import { usePlans } from '../hooks/usePlans'
 import { publishMyProofs } from '../hooks/useChallengeProofs'
 import { computeStreaks } from '../lib/streaks'
+import { xpHistory } from '../lib/xp'
 import { addDays, dayKey } from '../lib/date'
 import { activityFor, buildPublicStats, challengeScore } from '../lib/social'
 import { fmtDistance, fmtVolume } from '../lib/units'
@@ -35,7 +36,7 @@ export function useMyPublicStats() {
     })
     const watch = buildStreakWatch(workouts, streaks, { isRestDay, isTrainingDay, openSince, weeklyGoal: profile.weeklyGoal })
     const risk = evaluateWatch(watch, localNow(), 0)
-    const base = buildPublicStats(workouts, streaks, profile.weeklyGoal)
+    const base = buildPublicStats(workouts, streaks, profile.weeklyGoal, xpHistory(workouts).total)
     return {
       stats: {
         ...base,

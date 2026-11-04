@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildPublicStats,
+  levelOfStats,
+  metricValue,
+  METRICS,
   needsSetup,
   describeNotification,
   hasLeft,
@@ -70,6 +74,28 @@ describe('names', () => {
     const d = describeNotification(n, { username: 'jake', displayName: 'Jake QA' })
     expect(d.title).toBe('Jake QA sent you a friend request')
     expect(d.handle).toBe('@jake')
+  })
+})
+
+describe('xp in public stats', () => {
+  const streaks = { current: 0, longest: 0, mode: 'weekly' } as never
+  it('publishes xp only when given', () => {
+    expect(buildPublicStats([], streaks, 3, 420).xp).toBe(420)
+    expect('xp' in buildPublicStats([], streaks, 3)).toBe(false)
+    expect(buildPublicStats([], streaks, 3, 0).xp).toBe(0)
+  })
+  it('derives a level only for stats with xp', () => {
+    expect(levelOfStats(buildPublicStats([], streaks, 3))).toBeNull()
+    expect(levelOfStats(undefined)).toBeNull()
+    expect(levelOfStats(buildPublicStats([], streaks, 3, 0))?.level).toBe(1)
+    expect(levelOfStats(buildPublicStats([], streaks, 3, 150))?.level).toBe(2)
+  })
+  it('ranks by total xp regardless of period, missing xp counts as 0', () => {
+    const s = buildPublicStats([], streaks, 3, 900)
+    expect(metricValue(s, 'xp', 'week')).toBe(900)
+    expect(metricValue(s, 'xp', 'all')).toBe(900)
+    expect(metricValue(buildPublicStats([], streaks, 3), 'xp', 'month')).toBe(0)
+    expect(METRICS.xp.short).toBe('XP')
   })
 })
 

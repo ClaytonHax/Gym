@@ -35,6 +35,7 @@ export function ExerciseFocus({
   editing,
   repsRef,
   onMenu,
+  onEditTarget,
   onSetChange,
   onEditSet,
   onUnlog,
@@ -57,6 +58,7 @@ export function ExerciseFocus({
   editing: boolean
   repsRef: RefObject<HTMLDivElement>
   onMenu: () => void
+  onEditTarget: () => void
   onSetChange: (setIndex: number, patch: Partial<WorkoutSet>) => void
   onEditSet: (setIndex: number) => void
   onUnlog: (setIndex: number) => void
@@ -115,12 +117,18 @@ export function ExerciseFocus({
             {totalSec > 0 ? `So far ${fmtDuration(totalSec)}${totalKm > 0 ? ` · ${fmtDistance(totalKm, unit)}` : ''}` : ''}
           </span>
         ) : null}
-        {aim ? (
-          <span className={`${INFO_CHIP} tabular !text-brand-400`}>
+        {!timed ? (
+          <button
+            type="button"
+            onClick={onEditTarget}
+            aria-label={aim ? `${aim}. Edit rep target` : 'Set a rep target'}
+            className={`${INFO_CHIP} tabular !text-brand-400 transition-colors duration-200 hover:bg-[var(--color-surface)]`}
+          >
             <Icon name="target" size={14} />
-            {aim}
-            {ex.restSec && showPlanRest ? ` · Rest ${fmtClock(ex.restSec)}` : ''}
-          </span>
+            {aim ?? 'Aim: set reps'}
+            {aim && ex.restSec && showPlanRest ? ` · Rest ${fmtClock(ex.restSec)}` : ''}
+            <Icon name="pencil" size={12} className="opacity-70" />
+          </button>
         ) : null}
         {lastText ? (
           <span className={`${INFO_CHIP} tabular`}>

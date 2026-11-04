@@ -6,12 +6,14 @@ import { Button, IconButton, Segmented, Sheet, Skeleton } from '../components/ui
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { getTemplate } from '../data/programs'
+import { useRoutines } from '../hooks/useRoutines'
 import { usePlans } from '../hooks/usePlans'
 import { usePublicPlan, usePublicPlanActions } from '../hooks/usePublicPlans'
 import { StopsUpdatesNotice } from '../components/plans'
 import { dayKey } from '../lib/date'
 import {
   blankPlanDays,
+  cloneDay,
   cloneDays,
   newRestDay,
   newWorkoutDay,
@@ -20,7 +22,7 @@ import {
   rotationText,
   templateToPlanDays,
 } from '../lib/plans'
-import type { PlanDay } from '../types'
+import type { PlanDay, PlanExercise } from '../types'
 
 interface Draft {
   name: string
@@ -40,6 +42,7 @@ export function PlanEditor() {
   const toast = useToast()
   const { plans, loading, activePlan, savePlan, updatePlan, activatePlan } = usePlans()
 
+  const { saveRoutine } = useRoutines()
   const { savePublic } = usePublicPlanActions()
   const { plan: publicPlan, loading: publicLoading } = usePublicPlan(pid)
 
@@ -51,6 +54,8 @@ export function PlanEditor() {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [startDate, setStartDate] = useState(dayKey())
   const [editingDay, setEditingDay] = useState<string | null>(null)
+  // Exercises of the day sheet as they were when it opened, to offer "keep original".
+  const [editSnapshot, setEditSnapshot] = useState<PlanExercise[] | null>(null)
   const [leaveOpen, setLeaveOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const baseline = useRef('')
@@ -146,6 +151,39 @@ export function PlanEditor() {
       ;[days[i], days[t]] = [days[t], days[i]]
       return { ...d, days }
     })
+  }
+
+  function duplicateDay(i: number) {
+    setDraft((d) => {
+      if (!d) return d
+      const days = [...d.days]
+      days.splice(i + 1, 0, cloneDay(d.days[i]))
+      return { ...d, days }
+    })
+    toast(`Duplicated as day ${i + 2}`)
+  }
+
+  function openDay(day: PlanDay) {
+    setEditSnapshot(day.exercises)
+    setEditingDay(day.id)
+  }
+
+  function closeDay() {
+    setEditingDay(null)
+    setEditSnapshot(null)
+  }
+
+  /** Save the sheet's edits as a routine and put the day back as it was. */
+  async function saveEditsAsAlt() {
+    if (!editing || !editSnapshot) return
+    try {
+      await saveRoutine({ name: `${editing.name.trim() || 'Workout'} (alt)`, exercises: editing.exercises })
+      patchDay(editing.id, { exercises: editSnapshot })
+      toast('Saved as routine')
+      closeDay()
+    } catch {
+      toast('Could not save the routine.', 'error')
+    }
   }
 
   function setKind(day: PlanDay, kind: 'workout' | 'rest') {
@@ -275,6 +313,20 @@ export function PlanEditor() {
                       className="min-h-11 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 font-display text-xl font-semibold outline-none focus:border-brand-500"
                     />
                   )}
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-2">
+                  <div className="mr-1 min-w-[10rem] flex-1">
+                    <Segmented
+                      label={`Day ${i + 1} type`}
+                      value={day.kind}
+                      onChange={(k) => setKind(day, k)}
+                      options={[
+                        { value: 'workout', label: 'Workout' },
+                        { value: 'rest', label: 'Rest' },
+                      ]}
+                    />
+                  </div>
                   <IconButton
                     icon="arrow-up"
                     label={`Move day ${i + 1} up`}
@@ -287,20 +339,11 @@ export function PlanEditor() {
                     disabled={i === draft.days.length - 1}
                     onClick={() => moveDay(i, 1)}
                   />
-                </div>
-
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <Segmented
-                      label={`Day ${i + 1} type`}
-                      value={day.kind}
-                      onChange={(k) => setKind(day, k)}
-                      options={[
-                        { value: 'workout', label: 'Workout' },
-                        { value: 'rest', label: 'Rest' },
-                      ]}
-                    />
-                  </div>
+                  <IconButton
+                    icon="copy"
+                    label={`Duplicate day ${i + 1}`}
+                    onClick={() => duplicateDay(i)}
+                  />
                   <IconButton
                     icon="trash"
                     label={`Remove day ${i + 1}`}
@@ -313,7 +356,7 @@ export function PlanEditor() {
                 {rest ? null : (
                   <button
                     type="button"
-                    onClick={() => setEditingDay(day.id)}
+                    onClick={() => openDay(day)}
                     className="mt-2 flex min-h-12 w-full items-center gap-2 rounded-xl bg-[var(--color-surface-2)] px-3 text-left transition-colors duration-200 hover:bg-[var(--color-line)]"
                   >
                     <Icon name="dumbbell" size={18} className="shrink-0 text-brand-400" />
@@ -408,12 +451,19 @@ export function PlanEditor() {
 
       <Sheet
         open={editing !== null}
-        onClose={() => setEditingDay(null)}
+        onClose={closeDay}
         title={editing ? `${editing.name || 'Workout'} exercises` : 'Exercises'}
         footer={
-          <Button full onClick={() => setEditingDay(null)}>
-            Done
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button full onClick={closeDay}>
+              Done
+            </Button>
+            {editing && editSnapshot && JSON.stringify(editing.exercises) !== JSON.stringify(editSnapshot) ? (
+              <Button full variant="secondary" onClick={() => void saveEditsAsAlt()}>
+                Keep original, save edits as copy
+              </Button>
+            ) : null}
+          </div>
         }
       >
         {editing ? (

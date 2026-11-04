@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Icon } from './Icon'
-import { Badge, Button, Field, Sheet } from './ui'
+import { Badge, Button, Field, IconButton, Sheet } from './ui'
+import { EditExerciseSheet } from './EditExerciseSheet'
 import { useExercises } from '../hooks/useExercises'
 import { useToast } from '../contexts/ToastContext'
 import { EQUIPMENT, MUSCLE_COLORS, MUSCLE_GROUPS, matchesExercise } from '../data/exercises'
@@ -44,6 +45,8 @@ export function ExercisePicker({
   const [newLogBy, setNewLogBy] = useState<LogMode | null>(null)
   const [newFields, setNewFields] = useState<CardioField[]>([])
   const [saving, setSaving] = useState(false)
+  /** Custom exercise open in the edit sheet, stacked above this picker. */
+  const [editing, setEditing] = useState<Exercise | null>(null)
 
   const searching = search.trim() !== ''
 
@@ -138,9 +141,13 @@ export function ExercisePicker({
   }
 
   return (
+    <>
     <Sheet
       open={open}
-      onClose={close}
+      // While the edit sheet is up it owns Escape and the backdrop; closing it returns here.
+      onClose={() => {
+        if (!editing) close()
+      }}
       title={creating ? 'Create your own exercise' : swapFor ? `Swap ${swapFor} for…` : 'Add exercises'}
       size={creating ? 'auto' : 'full'}
       pinned={
@@ -402,12 +409,12 @@ export function ExercisePicker({
               {filtered.map((ex) => {
                 const isSelected = selected.includes(ex.id)
                 return (
-                  <li key={ex.id}>
+                  <li key={ex.id} className="flex items-stretch gap-1.5">
                     <button
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => toggle(ex.id)}
-                      className={`flex min-h-14 w-full items-center gap-3 rounded-xl border-2 p-3 text-left
+                      className={`flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-xl border-2 p-3 text-left
                         transition-colors duration-200 ${
                           isSelected
                             ? 'border-brand-500 bg-brand-500/15'
@@ -435,6 +442,14 @@ export function ExercisePicker({
                         ) : null}
                       </span>
                     </button>
+                    {ex.custom ? (
+                      <IconButton
+                        icon="pencil"
+                        label={`Edit ${ex.name}`}
+                        onClick={() => setEditing(ex)}
+                        className="self-center text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+                      />
+                    ) : null}
                   </li>
                 )
               })}
@@ -447,5 +462,7 @@ export function ExercisePicker({
         </div>
       )}
     </Sheet>
+    <EditExerciseSheet exercise={editing} onClose={() => setEditing(null)} />
+    </>
   )
 }

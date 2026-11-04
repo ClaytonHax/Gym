@@ -78,6 +78,19 @@ export function nameAndHandle(p: PublicProfile | undefined): string {
   return p?.displayName ? `${p.displayName} · @${p.username}` : whoLabel(p)
 }
 
+/** Tiny muted "Lv 7" pill. Render nothing when the level is unknown. */
+export function LevelChip({ level, className = '' }: { level: number | null | undefined; className?: string }) {
+  if (!level) return null
+  return (
+    <span
+      title={`Level ${level}`}
+      className={`tabular inline-flex shrink-0 items-center rounded-full bg-xp-400/15 px-1.5 py-px text-[10px] font-bold leading-4 text-xp-400 ${className}`}
+    >
+      Lv {level}
+    </span>
+  )
+}
+
 export function fmtMetric(metric: BoardMetric, value: number, unit: Unit): string {
   if (metric === 'volume') return fmtVolume(value, unit)
   if (metric === 'minutes') {
@@ -85,6 +98,7 @@ export function fmtMetric(metric: BoardMetric, value: number, unit: Unit): strin
     return h > 0 ? `${h}h ${String(Math.round(value % 60)).padStart(2, '0')}m` : `${Math.round(value)}m`
   }
   if (metric === 'streak') return String(value)
+  if (metric === 'xp') return `${value.toLocaleString()} XP`
   return value.toLocaleString()
 }
 

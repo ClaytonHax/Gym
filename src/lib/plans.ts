@@ -25,13 +25,19 @@ export function newWorkoutDay(name = 'Workout'): PlanDay {
   return { id: newDayId(), kind: 'workout', name, exercises: [] }
 }
 
+/** Deep copy of one day with a fresh id. Workout days get `nameSuffix` appended; rest days keep their name. */
+export function cloneDay(day: PlanDay, nameSuffix = ' (copy)'): PlanDay {
+  return {
+    ...day,
+    id: newDayId(),
+    ...(day.kind === 'workout' ? { name: `${day.name}${nameSuffix}` } : {}),
+    exercises: day.exercises.map((e) => ({ ...e, targets: [...(e.targets ?? [])] })),
+  }
+}
+
 /** Deep copy with fresh day ids, so edits never touch the source. */
 export function cloneDays(days: PlanDay[]): PlanDay[] {
-  return days.map((d) => ({
-    ...d,
-    id: newDayId(),
-    exercises: d.exercises.map((e) => ({ ...e, targets: [...(e.targets ?? [])] })),
-  }))
+  return days.map((d) => cloneDay(d, ''))
 }
 
 function toDate(d: Date | DayKey): Date {

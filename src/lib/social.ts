@@ -3,6 +3,7 @@ import { addDays, dayKey, parseDayKey, startOfWeek } from './date'
 import { bestSetOf, estimate1rm } from './stats'
 import type { StreakStats } from './streaks'
 import { isTimed } from './logMode'
+import { levelFor, type LevelInfo } from './xp'
 
 /* -------------------------------------------------------------------------- */
 /* Types — mirrors of the Firestore docs described in firestore.rules          */
@@ -35,6 +36,8 @@ export interface PublicStats {
   weeklyGoal: number
   lastWorkoutAt: string | null
   prCount: number
+  /** Lifetime XP (see lib/xp). Absent for friends on older versions. */
+  xp?: number
   topLifts: Array<{ name: string; e1rmKg: number }>
   /** Owner-computed at last sync: streak ends today unless they train. Trust only if atRiskDay is the viewer's today. */
   atRisk?: boolean
@@ -294,7 +297,7 @@ export function workoutMinutes(w: Pick<Workout, 'durationSec'>): number {
   return Math.round(w.durationSec / 60)
 }
 
-export function buildPublicStats(workouts: Workout[], streaks: StreakStats, weeklyGoal: number): PublicStats {
+export function buildPublicStats(workouts: Workout[], streaks: StreakStats, weeklyGoal: number, xpTotal?: number): PublicStats {
   const cutoff = dayKey(addDays(new Date(), -STATS_DAYS))
   const days: Record<string, DayTotals> = {}
   const active = new Set<string>()
@@ -348,8 +351,14 @@ export function buildPublicStats(workouts: Workout[], streaks: StreakStats, week
     weeklyGoal,
     lastWorkoutAt: workouts[0]?.startedAt ?? null,
     prCount,
+    ...(typeof xpTotal === 'number' ? { xp: Math.round(xpTotal) } : {}),
     topLifts: [...lifts.values()].sort((a, b) => b.e1rmKg - a.e1rmKg).slice(0, 3),
   }
+}
+
+/** A friend's level, or null when their stats carry no XP (older app version). */
+export function levelOfStats(s: PublicStats | undefined): LevelInfo | null {
+  return typeof s?.xp === 'number' ? levelFor(s.xp) : null
 }
 
 /**
@@ -380,7 +389,7 @@ export function liveStreak(s: PublicStats | undefined): number {
 /* -------------------------------------------------------------------------- */
 
 export type Period = 'week' | 'month' | 'all'
-export type BoardMetric = ChallengeMetric | 'streak'
+export type BoardMetric = ChallengeMetric | 'streak' | 'xp'
 
 export const METRICS: Record<BoardMetric, { label: string; short: string; unit: string }> = {
   workouts: { label: 'Workouts', short: 'Workouts', unit: '' },
@@ -389,6 +398,7 @@ export const METRICS: Record<BoardMetric, { label: string; short: string; unit: 
   sets: { label: 'Working sets', short: 'Sets', unit: 'sets' },
   minutes: { label: 'Time training', short: 'Time', unit: 'min' },
   streak: { label: 'Current streak', short: 'Streak', unit: '' },
+  xp: { label: 'Experience', short: 'XP', unit: 'XP' },
 }
 
 export function periodStart(period: Period): string | null {
@@ -414,6 +424,7 @@ function sumDays(days: Record<string, DayTotals>, from: string, to: string, metr
 export function metricValue(s: PublicStats | undefined, metric: BoardMetric, period: Period): number {
   if (!s) return 0
   if (metric === 'streak') return liveStreak(s)
+  if (metric === 'xp') return s.xp ?? 0
   const from = periodStart(period)
   if (from) return sumDays(s.days, from, dayKey(), metric)
   const t = s.totals

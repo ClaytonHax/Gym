@@ -78,7 +78,7 @@ function DayRow({ day, index, defaultOpen }: { day: PlanDay; index: number; defa
       >
         <span className="tabular w-5 font-display text-lg font-bold text-brand-400">{index + 1}</span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-display text-xl font-semibold">{day.name}</span>
+          <span className="line-clamp-2 block font-display text-xl font-semibold">{day.name}</span>
           <span className="tabular block truncate text-xs text-[var(--color-fg-muted)]">
             {day.focus ? `${day.focus} · ` : ''}
             {daySummary(day.exercises)}
@@ -100,14 +100,14 @@ function DayRow({ day, index, defaultOpen }: { day: PlanDay; index: number; defa
           {day.exercises.map((e, j) => {
             const rest = e.restSec ? fmtDuration(e.restSec) : null
             return (
-              <li key={`${e.exerciseId}-${j}`} className="flex items-center gap-2 py-0.5">
+              <li key={`${e.exerciseId}-${j}`} className="flex items-start gap-2 py-0.5">
                 <span
-                  className="size-1.5 shrink-0 rounded-full"
+                  className="mt-2 size-1.5 shrink-0 rounded-full"
                   style={{ backgroundColor: MUSCLE_COLORS[e.muscle] }}
                   aria-hidden
                 />
-                <span className="min-w-0 flex-1 truncate">{e.name}</span>
-                <span className="tabular shrink-0 text-xs text-[var(--color-fg-muted)]">
+                <span className="min-w-0 flex-1 break-words">{e.name}</span>
+                <span className="tabular mt-0.5 shrink-0 text-xs text-[var(--color-fg-muted)]">
                   {exerciseTargetLabel(e)}
                   {rest ? ` · ${rest} rest` : ''}
                 </span>

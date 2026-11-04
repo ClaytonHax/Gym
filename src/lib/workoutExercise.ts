@@ -84,6 +84,18 @@ export function aimLabel(sets: Array<Pick<WorkoutSet, 'targetReps' | 'warmup'>>)
   return parts.length ? `Aim: ${parts.join(', then ')}` : null
 }
 
+/** Sets the rep target on every working set (warmups keep theirs); a blank value clears it. */
+export function withTargetReps(ex: WorkoutExercise, value: string): WorkoutExercise {
+  const t = value.trim()
+  return {
+    ...ex,
+    sets: ex.sets.map((s) => {
+      if (s.warmup) return s
+      const { targetReps: _old, ...rest } = s
+      return (t ? { ...rest, targetReps: t } : rest) as WorkoutSet
+    }),
+  }
+}
 
 /** The seconds a timed set currently holds, counting a still-running stopwatch. */
 export function timedSeconds(s: WorkoutSet, now = Date.now()): number {
