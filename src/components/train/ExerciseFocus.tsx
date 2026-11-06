@@ -87,7 +87,7 @@ export function ExerciseFocus({
         .slice(0, 3)
         .map((s) =>
           assisted
-            ? `${fmtWeight(s.assistKg ?? 0, unit, false)} assist × ${s.reps}`
+            ? `${fmtWeight(s.assistKg ?? 0, unit, false)}\u00A0assist\u00A0×\u00A0${s.reps}`
             : timed
             ? `${fmtDuration(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
             : ex.tracksWeight
