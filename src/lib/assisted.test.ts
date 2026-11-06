@@ -1,3 +1,4 @@
+import { fmtExact, toKg } from './units'
 import { describe, expect, it } from 'vitest'
 import { assistedPatch, effectiveKg, isAssisted, settleAssisted } from './assisted'
 import { estimate1rm, volumeOf } from './stats'
@@ -77,5 +78,17 @@ describe('stats read the effective weight', () => {
     const s = set({ done: true, reps: 8, ...assistedPatch(80, 30) })
     expect(volumeOf([ex([s])])).toBe(50 * 8)
     expect(estimate1rm(s.weightKg, s.reps)).toBe(estimate1rm(50, 8))
+  })
+})
+
+describe('fmtExact', () => {
+  it('keeps the maths on screen adding up', () => {
+    expect(fmtExact(90.95, 'kg')).toBe('90.95 kg')
+    expect(fmtExact(effectiveKg(90.95, 40), 'kg')).toBe('50.95 kg')
+    expect(fmtExact(40, 'kg', false)).toBe('40')
+  })
+  it('reads a weight typed in lb back exactly', () => {
+    expect(fmtExact(toKg('lb', 200), 'lb')).toBe('200 lb')
+    expect(fmtExact(effectiveKg(toKg('lb', 200), toKg('lb', 65)), 'lb')).toBe('135 lb')
   })
 })

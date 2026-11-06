@@ -18,6 +18,12 @@ export function fmtWeight(kg: number, unit: Unit, withUnit = true): string {
   return withUnit ? `${text} ${unit}` : text
 }
 
+/** Up to two decimals, for sums that must add up on screen: 90.95 − 40 = 50.95. */
+export function fmtExact(kg: number, unit: Unit, withUnit = true): string {
+  const text = String(Math.round(kgTo(unit, kg) * 100) / 100)
+  return withUnit ? `${text} ${unit}` : text
+}
+
 /** Volume gets large fast — 12,480 kg reads better as 12.5t. */
 export function fmtVolume(kg: number, unit: Unit): string {
   const v = kgTo(unit, kg)

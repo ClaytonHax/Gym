@@ -33,7 +33,7 @@ import { dayKey, fmtDuration } from '../lib/date'
 import type { PhotoSvg } from '../lib/photoSvg'
 import { challengeState } from '../lib/social'
 import { fmtDuration as fmtStopwatch, isTimed, logModeOf } from '../lib/logMode'
-import { fmtVolume, fmtWeight, kgTo } from '../lib/units'
+import { fmtExact, fmtVolume, fmtWeight, kgTo } from '../lib/units'
 import { DEFAULT_BODY_WEIGHT_KG, estimateCalories } from '../lib/calories'
 import { stripUndefined } from '../lib/clean'
 import { haptic } from '../lib/haptics'
@@ -847,8 +847,8 @@ export function WorkoutActive() {
   }
 
   async function saveBodyWeight(kg: number) {
-    const rounded = Math.round(kg * 10) / 10
-    if (!Number.isFinite(rounded) || rounded < 20 || rounded > 400) {
+    // Stored unrounded so a weight typed in lb reads back exactly.
+    if (!Number.isFinite(kg) || kg < 20 || kg > 400) {
       toast(
         `Enter a body weight between ${Math.round(kgTo(unit, 20))} and ${Math.round(kgTo(unit, 400))} ${unit}.`,
         'error'
@@ -856,7 +856,7 @@ export function WorkoutActive() {
       return
     }
     try {
-      await saveBodyEntry({ date: dayKey(), weightKg: rounded })
+      await saveBodyEntry({ date: dayKey(), weightKg: kg })
       toast('Body weight saved.')
     } catch {
       toast('Could not save your body weight. Try again.', 'error')
@@ -921,7 +921,7 @@ export function WorkoutActive() {
     }
     if (assistedEx && !v.bodyKg) return { label: 'Enter your body weight', tone: 'go', onPress: focusBodyField }
     if (v.reps <= 0) return { label: 'Set your reps', tone: 'go', onPress: focusRepsField }
-    const w = fmtWeight(v.weightKg, unit)
+    const w = (assistedEx ? fmtExact : fmtWeight)(v.weightKg, unit)
     const what = ex.tracksWeight
       ? `${w} × ${v.reps}`
       : v.weightKg > 0

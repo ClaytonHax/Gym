@@ -19,7 +19,7 @@ import { isAssisted } from '../lib/assisted'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { useExercises } from '../hooks/useExercises'
 import { fmtDateLong, fmtDuration, fmtTime } from '../lib/date'
-import { fmtDistance, fmtPace, fmtVolume, fmtWeight, plural } from '../lib/units'
+import { fmtDistance, fmtExact, fmtPace, fmtVolume, fmtWeight, plural } from '../lib/units'
 import { fmtDuration as fmtClock, isTimed } from '../lib/logMode'
 import {
   bestSetOf,
@@ -253,11 +253,11 @@ export function SessionDetail() {
                         </th>
                         {ex.tracksWeight ? (
                           <td className="py-1.5 text-right font-medium">
-                            {fmtWeight(set.weightKg, unit, false)}
+                            {(isAssisted(ex) ? fmtExact : fmtWeight)(set.weightKg, unit, false)}
                             <span className="ml-0.5 text-xs text-[var(--color-fg-muted)]">{unit}</span>
                             {set.assistKg !== undefined && set.bodyweightKg ? (
                               <span className="block text-xs font-normal text-[var(--color-fg-muted)]">
-                                {fmtWeight(set.bodyweightKg, unit, false)} − {fmtWeight(set.assistKg, unit, false)} assist
+                                {fmtExact(set.bodyweightKg, unit, false)} − {fmtExact(set.assistKg, unit, false)} assist
                               </span>
                             ) : null}
                           </td>

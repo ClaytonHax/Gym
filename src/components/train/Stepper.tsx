@@ -68,6 +68,10 @@ export function Stepper({
     onChange(clamp(parse(clean)))
   }
 
+  // Long values like 100.02 shrink to stay inside the narrow half-width box.
+  const shownLength = (text || (suggested ? fmt(value) : '')).length
+  const sizeClass = shownLength >= 7 ? 'text-2xl' : shownLength >= 6 ? 'text-3xl' : 'text-4xl'
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') e.currentTarget.blur()
   }
@@ -87,7 +91,7 @@ export function Stepper({
         onChange={(e) => onInput(e.target.value)}
         onFocus={(e) => e.currentTarget.select()}
         onKeyDown={onKeyDown}
-        className="num-display tabular mt-1 min-h-16 w-full scroll-my-40 rounded-xl border-2 border-transparent bg-[var(--color-surface)] px-1 text-center text-4xl text-[var(--color-fg)] outline-none focus:border-brand-500 placeholder:italic placeholder:text-[var(--color-fg-muted)]"
+        className={`num-display tabular mt-1 min-h-16 w-full scroll-my-40 rounded-xl border-2 border-transparent bg-[var(--color-surface)] px-1 text-center ${sizeClass} text-[var(--color-fg)] outline-none focus:border-brand-500 placeholder:italic placeholder:text-[var(--color-fg-muted)]`}
       />
     </div>
   )

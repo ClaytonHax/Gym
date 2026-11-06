@@ -1,7 +1,7 @@
 import { useState, type RefObject } from 'react'
 import { Icon } from '../Icon'
 import { Stepper } from './Stepper'
-import { fmtWeight, kgTo, step, toKg } from '../../lib/units'
+import { fmtExact, kgTo, step, toKg } from '../../lib/units'
 import { assistedPatch } from '../../lib/assisted'
 import type { ShownValues } from './setValues'
 import type { Unit, WorkoutSet } from '../../types'
@@ -42,7 +42,7 @@ function BodyWeightEntry({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && valid) onSave(toKg(unit, n))
           }}
-          className="tabular mt-1 min-h-11 w-full rounded-xl border-2 border-[var(--color-line)] bg-[var(--color-surface)] px-3 text-base text-[var(--color-fg)] outline-none focus:border-brand-500"
+          className="tabular mt-1 min-h-11 w-full rounded-xl border-2 border-[var(--color-fg-muted)] bg-[var(--color-surface)] px-3 text-base text-[var(--color-fg)] outline-none focus:border-brand-500"
         />
       </label>
       <button
@@ -160,8 +160,8 @@ export function CurrentSetPanel({
           {bodyKg ? (
             <>
               <p className="tabular text-sm text-[var(--color-fg-muted)]">
-                {fmtWeight(bodyKg, unit)} body − {fmtWeight(assistKg, unit)} assist ={' '}
-                <span className="text-lg font-bold text-[var(--color-fg)]">{fmtWeight(values.weightKg, unit)}</span>
+                {fmtExact(bodyKg, unit)} body − {fmtExact(assistKg, unit)} assist ={' '}
+                <span className="text-lg font-bold text-[var(--color-fg)]">{fmtExact(values.weightKg, unit)}</span>
               </p>
               {assistKg >= bodyKg ? (
                 <p className="text-xs text-amber-400">Assistance can’t be more than your body weight.</p>

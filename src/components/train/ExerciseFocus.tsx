@@ -9,7 +9,7 @@ import { shownValues } from './setValues'
 import { MUSCLE_COLORS } from '../../data/exercises'
 import { fmtClock } from '../../lib/date'
 import { fmtDuration, fmtTargetDuration } from '../../lib/logMode'
-import { fmtDistance, fmtWeight, step } from '../../lib/units'
+import { fmtExact, fmtDistance, fmtWeight, step } from '../../lib/units'
 import { isAssisted } from '../../lib/assisted'
 import { XP_RULES, setXp } from '../../lib/xp'
 import { aimLabel, keyOf, timedPlaceholders } from '../../lib/workoutExercise'
@@ -87,7 +87,7 @@ export function ExerciseFocus({
         .slice(0, 3)
         .map((s) =>
           assisted
-            ? `${fmtWeight(s.assistKg ?? 0, unit, false)}\u00A0assist\u00A0×\u00A0${s.reps}`
+            ? `${fmtExact(s.assistKg ?? 0, unit, false)}\u00A0assist\u00A0×\u00A0${s.reps}`
             : timed
             ? `${fmtDuration(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
             : ex.tracksWeight
@@ -218,11 +218,11 @@ export function ExerciseFocus({
                   <span className="tabular w-7 shrink-0 text-sm font-bold text-[var(--color-fg-muted)]">{label}</span>
                   <span className="tabular min-w-0 flex-1 truncate font-semibold">
                     {ex.tracksWeight
-                      ? `${fmtWeight(set.weightKg, unit)} × ${set.reps}`
+                      ? `${(assisted ? fmtExact : fmtWeight)(set.weightKg, unit)} × ${set.reps}`
                       : `${set.weightKg > 0 ? `+${fmtWeight(set.weightKg, unit)} · ` : ''}${set.reps} reps`}
                     {assisted && set.assistKg !== undefined ? (
                       <span className="ml-1 text-sm font-normal text-[var(--color-fg-muted)]">
-                        · {fmtWeight(set.assistKg, unit, false)} assist
+                        · {fmtExact(set.assistKg, unit, false)} assist
                       </span>
                     ) : null}
                   </span>
@@ -244,7 +244,7 @@ export function ExerciseFocus({
               <span className="tabular w-7 shrink-0 text-sm font-bold">{label}</span>
               <span className="tabular min-w-0 flex-1 truncate italic">
                 {v.reps > 0
-                  ? `${ex.tracksWeight && v.weightKg > 0 ? `${fmtWeight(v.weightKg, unit)} × ` : ''}${v.reps}`
+                  ? `${ex.tracksWeight && v.weightKg > 0 ? `${(assisted ? fmtExact : fmtWeight)(v.weightKg, unit)} × ` : ''}${v.reps}`
                   : (planned ?? 'Set your reps')}
               </span>
             </li>
