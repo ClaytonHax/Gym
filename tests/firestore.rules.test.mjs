@@ -331,6 +331,22 @@ await t('invited-but-not-joined cannot post proof', () => assertFails(setDoc(doc
 await t('proofs cannot be edited', () => assertFails(updateDoc(doc(A, 'challenges/photo1/proofs/alice_w1'), { value: 99 })))
 await t('others cannot delete my proof', () => assertFails(deleteDoc(doc(B, 'challenges/photo1/proofs/alice_w1'))))
 await t('owner deletes own proof', () => assertSucceeds(deleteDoc(doc(A, 'challenges/photo1/proofs/alice_w1'))))
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore()
+  await setDoc(doc(db, 'challenges/photo1/proofs/alice_w7'), proof('alice', 'w7', { createdAt: Timestamp.now() }))
+  await setDoc(doc(db, 'challenges/photo1/proofs/bob_w8'), proof('bob', 'w8', { createdAt: Timestamp.now() }))
+  await setDoc(doc(db, 'challenges/gone/proofs/bob_w9'), proof('bob', 'w9', { createdAt: Timestamp.now() }))
+})
+await t('non-creator member cannot delete another proof', () => assertFails(deleteDoc(doc(B, 'challenges/photo1/proofs/alice_w7'))))
+await t('stranger cannot delete a proof', () => assertFails(deleteDoc(doc(C, 'challenges/photo1/proofs/bob_w8'))))
+await t('owner can still delete a proof left by a deleted battle', () => assertSucceeds(deleteDoc(doc(B, 'challenges/gone/proofs/bob_w9'))))
+await t('creator deletes the battle and every proof together', () => {
+  const batch = writeBatch(A)
+  batch.delete(doc(A, 'challenges/photo1'))
+  batch.delete(doc(A, 'challenges/photo1/proofs/alice_w7'))
+  batch.delete(doc(A, 'challenges/photo1/proofs/bob_w8'))
+  return assertSucceeds(batch.commit())
+})
 
 // ---------------------------------------------------------------------------
 // Public plan library

@@ -23,6 +23,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
@@ -117,6 +118,8 @@ const SocialContext = createContext<SocialValue | null>(null)
 
 const DIRECTORY_TTL_MS = 5 * 60 * 1000
 const DIRECTORY_CAP = 2000
+/** Notifications shown, and kept. */
+const INBOX_SIZE = 60
 
 function toProfile(uid: string, data: Record<string, unknown> | undefined): PublicProfile | undefined {
   if (!data?.username) return undefined
@@ -384,9 +387,23 @@ export function SocialProvider({ children }: { children: ReactNode }) {
       return
     }
     let first = true
+    let trimmed = false
+    const inbox = collection(db, 'users', uid, 'notifications')
     return onSnapshot(
-      query(collection(db, 'users', uid, 'notifications'), orderBy('createdAt', 'desc'), limit(60)),
+      query(inbox, orderBy('createdAt', 'desc'), limit(INBOX_SIZE)),
       (snap) => {
+        // Anything past the newest INBOX_SIZE can never be shown, so don't keep it.
+        if (!trimmed && snap.size === INBOX_SIZE) {
+          trimmed = true
+          getDocs(query(inbox, orderBy('createdAt', 'desc'), startAfter(snap.docs[INBOX_SIZE - 1]), limit(400)))
+            .then((old) => {
+              if (old.empty) return
+              const batch = writeBatch(db)
+              for (const d of old.docs) batch.delete(d.ref)
+              return batch.commit()
+            })
+            .catch((err) => console.warn('notification trim failed', err))
+        }
         const list = snap.docs.map((d) => {
           const data = d.data()
           return { id: d.id, ...data, createdAt: toIso(data.createdAt) } as AppNotification
@@ -756,7 +773,14 @@ export function SocialProvider({ children }: { children: ReactNode }) {
   )
 
   const deleteChallenge = useCallback(async (c: Challenge) => {
-    await deleteDoc(doc(db, 'challenges', c.id))
+    const batch = writeBatch(db)
+    batch.delete(doc(db, 'challenges', c.id))
+    // Firestore keeps subcollections when a parent is deleted, so take the photos too.
+    if (c.verify === 'photo') {
+      const proofs = await getDocs(collection(db, 'challenges', c.id, 'proofs'))
+      for (const p of proofs.docs) batch.delete(p.ref)
+    }
+    await batch.commit()
   }, [])
 
   const postScore = useCallback(

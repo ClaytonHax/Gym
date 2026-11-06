@@ -69,25 +69,38 @@ For the deployed app, add `gym-zim.vercel.app` under
 ### Data model
 
 ```
-users/{uid}                     profile: displayName, unit, theme, heightCm, goalWeightKg, weeklyGoal
+users/{uid}                     settings: unit, theme, goals, rest timer, share toggles (missing = default)
 users/{uid}/workouts/{id}       completed sessions (denormalised totalVolumeKg + setCount)
 users/{uid}/bodylog/{yyyy-mm-dd}  one weigh-in per day — the date is the document id
 users/{uid}/exercises/{id}      custom exercises
+users/{uid}/exerciseNotes/{exerciseId}  form-note bullets; deleted when empty
 users/{uid}/routines/{id}       saved routines
+users/{uid}/plans/{id}          training plans
 users/{uid}/state/activeWorkout the in-progress session, mirrored from localStorage
+users/{uid}/state/activePlan    which plan is running, its start date and one-off changes
 
 profiles/{uid}                  public handle: username, displayName, rename cooldown
 usernames/{name}                { uid } — uniqueness lock for usernames
 users/{uid}/friends/{uid}       who can see your public docs
 users/{uid}/public/stats        friend-readable stats summary (daily totals, streak, top lifts)
 users/{uid}/public/push         Web Push subscriptions + notification prefs
-users/{uid}/activity/{id}       friend-readable feed card per recent workout (+ reactions)
-users/{uid}/notifications/{id}  inbox; friends can create, only you can read
-friendRequests/{from_to}        pending requests
+users/{uid}/public/statsDetail  in-depth stats copy; exists only while shareStats is on
+users/{uid}/public/profileDetail  in-depth profile copy; exists only while shareProfile is on
+users/{uid}/sharedWorkouts/{id} in-depth workout copies; exist only while shareWorkouts is on
+users/{uid}/activity/{id}       friend-readable feed card per workout; pruned after 30 days
+users/{uid}/notifications/{id}  inbox; friends can create, only you can read; newest 60 kept
+friendRequests/{from_to}        pending requests; deleted on accept or decline
 challenges/{id}                 battles; each member writes only their own score
+challenges/{id}/proofs/{id}     photo proofs; deleted with the battle
+publicPlans/{id}                public plan library
+streakWatch/{uid}               the few facts the streak bot reads, so it never reads workouts
 ```
 
 Everything is enforced in [`firestore.rules`](./firestore.rules) — there's no admin backend.
+
+Users without a `users/{uid}` document or a profile are normal: settings fall back to defaults, and
+a profile only appears after setup. Firestore also keeps subcollections when a parent is deleted, so
+delete them explicitly. In the console, a parent shown in italics has no document of its own.
 
 Identity is **uid-based**: friendships, requests, notifications and challenges all reference uids.
 Usernames are display-only (they can change, once free then every 30 days), so a rename never

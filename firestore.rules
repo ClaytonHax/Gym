@@ -233,12 +233,14 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.creator == me();
 
       // Photo-verified battles: one proof per workout, posted by its owner,
-      // visible to every member. Proofs are never edited, only deleted.
+      // visible to every member. Proofs are never edited, only deleted: by the
+      // person who posted them, or by the creator when deleting the whole battle.
       match /proofs/{pid} {
         allow read: if signedIn()
           && me() in get(/databases/$(database)/documents/challenges/$(cid)).data.members;
         allow create: if signedIn() && validProof(cid, pid);
-        allow delete: if signedIn() && resource.data.uid == me();
+        allow delete: if signedIn() && (resource.data.uid == me()
+          || get(/databases/$(database)/documents/challenges/$(cid)).data.creator == me());
       }
     }
 
