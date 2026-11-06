@@ -103,6 +103,7 @@ export const BUILTIN_EXERCISES: Exercise[] = [
   ex('seated-cable-row', 'Seated Cable Row', 'Back', 'Cable'),
   ex('pull-up', 'Pull-Up', 'Back', 'Bodyweight', false),
   ex('chin-up', 'Chin-Up', 'Back', 'Bodyweight', false),
+  ex('assisted-pull-up', 'Assisted Pull-Up', 'Back', 'Machine', true, undefined, undefined, ['assisted chin up', 'gravitron', 'assist machine']),
   ex('face-pull', 'Face Pull', 'Back', 'Cable'),
   ex('shrug', 'Barbell Shrug', 'Back', 'Barbell'),
 

@@ -173,6 +173,34 @@ export function Settings() {
       </section>
 
       <section>
+        <SectionHeader title="Friend sharing" />
+        <Card className="flex flex-col gap-5">
+          <Toggle
+            label="Workouts in depth"
+            description="Every exercise, set, weight and rep from your last 30 days. Your notes stay private."
+            checked={profile.shareWorkouts === true}
+            onChange={(next) => save({ shareWorkouts: next })}
+          />
+          <Toggle
+            label="Stats in depth"
+            description="Personal records, weekly volume and muscle balance."
+            checked={profile.shareStats === true}
+            onChange={(next) => save({ shareStats: next })}
+          />
+          <Toggle
+            label="Profile details"
+            description="Body weight, body fat, height, goal weight, weekly goal and current plan."
+            checked={profile.shareProfile === true}
+            onChange={(next) => save({ shareProfile: next })}
+          />
+          <p className="text-xs text-[var(--color-fg-muted)]">
+            Friends always see your streak, level, totals, top lifts and workout summaries. These settings add to that,
+            and only friends can see them. Switch one off and it is removed for them right away.
+          </p>
+        </Card>
+      </section>
+
+      <section>
         <SectionHeader title="Notifications" />
         <Card className="flex flex-col gap-5">
           <PushToggleCard />

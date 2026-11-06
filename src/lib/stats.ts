@@ -212,7 +212,7 @@ export function lastPerformance(
   excludeWorkoutId?: string
 ): {
   date: string
-  sets: Array<{ weightKg: number; reps: number; durationSec?: number; distanceKm?: number }>
+  sets: Array<{ weightKg: number; reps: number; durationSec?: number; distanceKm?: number; assistKg?: number }>
 } | null {
   const sorted = [...workouts].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
   for (const w of sorted) {
@@ -226,6 +226,7 @@ export function lastPerformance(
         reps: s.reps,
         ...(s.durationSec !== undefined ? { durationSec: s.durationSec } : {}),
         ...(s.distanceKm !== undefined ? { distanceKm: s.distanceKm } : {}),
+        ...(s.assistKg !== undefined ? { assistKg: s.assistKg } : {}),
       }))
     if (sets.length > 0) return { date: w.startedAt, sets }
   }

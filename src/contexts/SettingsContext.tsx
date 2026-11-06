@@ -26,6 +26,8 @@ interface SettingsValue {
   update: (patch: Partial<Profile>) => Promise<void>
   /** Resolved theme after 'system' is evaluated — for chart palettes. */
   resolvedTheme: 'dark' | 'light'
+  /** True once this account's profile has arrived from the server (not a stale local copy). */
+  loaded: boolean
 }
 
 const SettingsContext = createContext<SettingsValue | null>(null)
@@ -43,6 +45,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   // Seed from localStorage so the chosen theme paints on the very first frame.
   const [profile, setProfile] = useState<Profile>(readLocal)
+  const [loadedFor, setLoadedFor] = useState<string | null>(null)
   const [systemDark, setSystemDark] = useState(
     () => !window.matchMedia('(prefers-color-scheme: light)').matches
   )
@@ -55,16 +58,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    setLoadedFor(null)
     if (!user) return
     const ref = doc(db, 'users', user.uid)
-    return onSnapshot(ref, (snap) => {
+    return onSnapshot(ref, { includeMetadataChanges: true }, (snap) => {
+      // A cached miss isn't an answer yet; wait for the server before trusting defaults.
+      if (snap.exists() || !snap.metadata.fromCache) setLoadedFor(user.uid)
       const data = snap.data() as Partial<Profile> | undefined
       const next: Profile = {
         ...DEFAULTS,
         displayName: user.displayName ?? '',
         ...data,
       }
-      setProfile(next)
+      // Metadata-only snapshots repeat the same data; don't churn consumers.
+      setProfile((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
       localStorage.setItem(LOCAL_KEY, JSON.stringify(next))
     })
   }, [user])
@@ -92,7 +99,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [user]
   )
 
-  const value = useMemo(() => ({ profile, update, resolvedTheme }), [profile, update, resolvedTheme])
+  const loaded = !!user && loadedFor === user.uid
+  const value = useMemo(() => ({ profile, update, resolvedTheme, loaded }), [profile, update, resolvedTheme, loaded])
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>
 }

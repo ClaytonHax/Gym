@@ -368,6 +368,50 @@ await t('starred survives author edits', async () => {
 await t('others cannot delete a plan', () => assertFails(deleteDoc(doc(B, 'publicPlans/alice1'))))
 await t('author deletes plan', () => assertSucceeds(deleteDoc(doc(A, 'publicPlans/alice1'))))
 
+// ---------------------------------------------------------------------------
+// Friend sharing: in-depth copies (sharedWorkouts, public/statsDetail, public/profileDetail)
+// ---------------------------------------------------------------------------
+await env.withSecurityRulesDisabled(async (ctx) => {
+  const db = ctx.firestore()
+  await setDoc(doc(db, 'users/bob/friends/alice'), { since: Timestamp.now() })
+  await setDoc(doc(db, 'users/alice/friends/bob'), { since: Timestamp.now() })
+  await setDoc(doc(db, 'users/bob/sharedWorkouts/w1'), { name: 'Pull 2', startedAt: '2026-10-24', exercises: [] })
+})
+const sharedWorkout = { name: 'Push 1', startedAt: '2026-10-25', durationSec: 3000, totalVolumeKg: 1200, setCount: 12, exercises: [], fp: 'abc' }
+await t('owner writes own sharedWorkouts', () => assertSucceeds(setDoc(doc(B, 'users/bob/sharedWorkouts/w2'), sharedWorkout)))
+await t('owner deletes own sharedWorkouts', () => assertSucceeds(deleteDoc(doc(B, 'users/bob/sharedWorkouts/w2'))))
+await t('friend gets a sharedWorkout', () => assertSucceeds(getDoc(doc(A, 'users/bob/sharedWorkouts/w1'))))
+await t('friend lists sharedWorkouts', () => assertSucceeds(getDocs(collection(A, 'users/bob/sharedWorkouts'))))
+await t('friend cannot write sharedWorkouts', () => assertFails(setDoc(doc(A, 'users/bob/sharedWorkouts/w3'), sharedWorkout)))
+await t('friend cannot delete sharedWorkouts', () => assertFails(deleteDoc(doc(A, 'users/bob/sharedWorkouts/w1'))))
+await t('stranger cannot get sharedWorkouts', () => assertFails(getDoc(doc(C, 'users/bob/sharedWorkouts/w1'))))
+await t('stranger cannot list sharedWorkouts', () => assertFails(getDocs(collection(C, 'users/bob/sharedWorkouts'))))
+
+await t('owner writes statsDetail', () =>
+  assertSucceeds(setDoc(doc(B, 'users/bob/public/statsDetail'), { asOf: '2026-10-25', records: [], weeklyVolume: [], muscleSets: [] })))
+await t('owner writes profileDetail', () =>
+  assertSucceeds(setDoc(doc(B, 'users/bob/public/profileDetail'), { weeklyGoal: 3, planName: 'PPL' })))
+await t('friend reads statsDetail', () => assertSucceeds(getDoc(doc(A, 'users/bob/public/statsDetail'))))
+await t('friend reads profileDetail', () => assertSucceeds(getDoc(doc(A, 'users/bob/public/profileDetail'))))
+await t('stranger cannot read statsDetail', () => assertFails(getDoc(doc(C, 'users/bob/public/statsDetail'))))
+await t('stranger cannot read profileDetail', () => assertFails(getDoc(doc(C, 'users/bob/public/profileDetail'))))
+await t('friend cannot write statsDetail', () => assertFails(updateDoc(doc(A, 'users/bob/public/statsDetail'), { asOf: 'hacked' })))
+await t('friend cannot write profileDetail', () => assertFails(setDoc(doc(A, 'users/bob/public/profileDetail'), { weeklyGoal: 99 })))
+
+await t('friend still cannot read private workouts', () => assertFails(getDoc(doc(A, 'users/bob/workouts/w1'))))
+await t('friend still cannot read owner user doc', () => assertFails(getDoc(doc(A, 'users/bob'))))
+
+await t('unfriend by bob (sharing test)', async () => {
+  const b = writeBatch(B)
+  b.delete(doc(B, 'users/bob/friends/alice'))
+  b.delete(doc(B, 'users/alice/friends/bob'))
+  await assertSucceeds(b.commit())
+})
+await t('unfriended alice loses sharedWorkouts', () => assertFails(getDocs(collection(A, 'users/bob/sharedWorkouts'))))
+await t('unfriended alice loses statsDetail', () => assertFails(getDoc(doc(A, 'users/bob/public/statsDetail'))))
+await t('unfriended alice loses profileDetail', () => assertFails(getDoc(doc(A, 'users/bob/public/profileDetail'))))
+await t('owner still reads own sharedWorkouts', () => assertSucceeds(getDocs(collection(B, 'users/bob/sharedWorkouts'))))
+
 console.log(`\n${pass} passed, ${fail} failed`)
 await env.cleanup()
 process.exit(fail ? 1 : 0)

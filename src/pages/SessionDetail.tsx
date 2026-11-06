@@ -15,6 +15,7 @@ import { useToast } from '../contexts/ToastContext'
 import { useWorkouts } from '../hooks/useWorkouts'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { MUSCLE_COLORS, isDumbbellExercise } from '../data/exercises'
+import { isAssisted } from '../lib/assisted'
 import { useBodyLog } from '../hooks/useBodyLog'
 import { useExercises } from '../hooks/useExercises'
 import { fmtDateLong, fmtDuration, fmtTime } from '../lib/date'
@@ -92,7 +93,11 @@ export function SessionDetail() {
       exercises: workout!.exercises.map((ex) => ({
         ...ex,
         // Same loads, cleared checkmarks — the point is to beat last time.
-        sets: ex.sets.map((s) => ({ ...s, done: false })),
+        // Assisted sets drop their frozen body weight so the repeat uses today's.
+        sets: ex.sets.map((s) => {
+          const { bodyweightKg: _b, ...rest } = s
+          return { ...(isAssisted(ex) ? rest : s), done: false }
+        }),
       })),
     })
     navigate('/workout')
@@ -250,6 +255,11 @@ export function SessionDetail() {
                           <td className="py-1.5 text-right font-medium">
                             {fmtWeight(set.weightKg, unit, false)}
                             <span className="ml-0.5 text-xs text-[var(--color-fg-muted)]">{unit}</span>
+                            {set.assistKg !== undefined && set.bodyweightKg ? (
+                              <span className="block text-xs font-normal text-[var(--color-fg-muted)]">
+                                {fmtWeight(set.bodyweightKg, unit, false)} − {fmtWeight(set.assistKg, unit, false)} assist
+                              </span>
+                            ) : null}
                           </td>
                         ) : null}
                         <td className="py-1.5 text-right font-medium">{set.reps}</td>

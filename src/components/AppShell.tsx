@@ -4,6 +4,7 @@ import { Icon, type IconName } from './Icon'
 import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { fmtDuration } from '../lib/date'
 import { SocialSync } from './SocialSync'
+import { SharingSync } from './SharingSync'
 import { ProfileSetup } from './ProfileSetup'
 import { TrainTourHost } from './train/TrainTour'
 import { PublicPlanSeeder } from './plans'
@@ -123,6 +124,7 @@ export function AppShell() {
       </main>
 
       <SocialSync />
+      <SharingSync />
       <ProfileSetup />
       <TrainTourHost />
       <PublicPlanSeeder />

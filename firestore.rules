@@ -4,6 +4,7 @@ rules_version = '2';
 // friends system adds a few narrow, rule-checked holes on top of that:
 //   - profiles/{uid} + usernames/{name}: public handle lookup for any signed-in user
 //   - users/{uid}/public/*, users/{uid}/activity/*: readable by that user's friends
+//   - users/{uid}/sharedWorkouts/*: in-depth workout copies, readable by friends while the owner's setting is on
 //   - users/{uid}/friends/{other}: the accepting friend can write their own entry
 //   - users/{uid}/notifications/*: friends (and pending requesters) can drop one in
 //   - friendRequests/*, challenges/*: shared between the people named in them
@@ -43,6 +44,11 @@ service cloud.firestore {
       // someone who has a pending request out to this user, so the request can ping.
       match /public/{docId} {
         allow read: if signedIn() && (friendOf(userId) || (docId == 'push' && (hasRequestTo(userId) || isBot())));
+      }
+
+      // Workouts the owner chose to share in depth (Settings). Only there while the setting is on.
+      match /sharedWorkouts/{workoutId} {
+        allow read: if signedIn() && friendOf(userId);
       }
 
       match /friends/{friendId} {

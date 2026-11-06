@@ -10,6 +10,7 @@ import { MUSCLE_COLORS } from '../../data/exercises'
 import { fmtClock } from '../../lib/date'
 import { fmtDuration, fmtTargetDuration } from '../../lib/logMode'
 import { fmtDistance, fmtWeight, step } from '../../lib/units'
+import { isAssisted } from '../../lib/assisted'
 import { XP_RULES, setXp } from '../../lib/xp'
 import { aimLabel, keyOf, timedPlaceholders } from '../../lib/workoutExercise'
 import type { Unit, WorkoutExercise, WorkoutSet } from '../../types'
@@ -33,6 +34,8 @@ export function ExerciseFocus({
   superset,
   panelIndex,
   editing,
+  bodyKg,
+  onSaveBody,
   repsRef,
   onMenu,
   onEditTarget,
@@ -47,7 +50,7 @@ export function ExerciseFocus({
   ex: WorkoutExercise
   unit: Unit
   dumbbell: boolean
-  last?: { sets: Array<{ weightKg: number; reps: number; durationSec?: number; distanceKm?: number }> }
+  last?: { sets: Array<{ weightKg: number; reps: number; durationSec?: number; distanceKm?: number; assistKg?: number }> }
   lastFull: WorkoutSet[]
   timed: boolean
   overload: boolean
@@ -56,6 +59,9 @@ export function ExerciseFocus({
   /** The set the big panel is on (first not-done, or the done one being edited); -1 when none. */
   panelIndex: number
   editing: boolean
+  /** Latest logged body weight in kg (assisted exercises); null when none. */
+  bodyKg?: number | null
+  onSaveBody?: (kg: number) => void
   repsRef: RefObject<HTMLDivElement>
   onMenu: () => void
   onEditTarget: () => void
@@ -74,12 +80,15 @@ export function ExerciseFocus({
   const totalKm = doneTimed.reduce((n, s) => n + (s.distanceKm ?? 0), 0)
   const exKey = keyOf(ex, ex.exerciseId)
   const lastSet = ex.sets[ex.sets.length - 1]
+  const assisted = isAssisted(ex) && !timed
 
   const lastText = last
     ? last.sets
         .slice(0, 3)
         .map((s) =>
-          timed
+          assisted
+            ? `${fmtWeight(s.assistKg ?? 0, unit, false)} assist × ${s.reps}`
+            : timed
             ? `${fmtDuration(s.durationSec ?? 0)}${s.distanceKm ? ` · ${fmtDistance(s.distanceKm, unit)}` : ''}`
             : ex.tracksWeight
               ? `${fmtWeight(s.weightKg, unit, false)}×${s.reps}`
@@ -140,7 +149,7 @@ export function ExerciseFocus({
         )}
       </div>
 
-      {overload ? (
+      {overload && !assisted ? (
         <p className="mt-2 flex items-center gap-2 rounded-xl bg-[var(--color-xp-400)]/15 px-3 py-2 text-sm font-bold text-[var(--color-xp-500)]">
           <Icon name="trending" size={16} className="shrink-0" />
           Level up! You topped your range last time. Try +{step(unit)} {unit}.
@@ -180,8 +189,11 @@ export function ExerciseFocus({
                 unit={unit}
                 tracksWeight={ex.tracksWeight}
                 dumbbell={dumbbell}
-                values={shownValues(ex, i, last?.sets)}
+                values={shownValues(ex, i, last?.sets, bodyKg)}
                 editing={editing}
+                assisted={
+                  assisted ? { bodyKg: shownValues(ex, i, last?.sets, bodyKg).bodyKg ?? null, onSaveBody: onSaveBody ?? (() => {}) } : undefined
+                }
                 repsRef={repsRef}
                 onChange={(p) => onSetChange(i, p)}
                 onUnlog={() => onUnlog(i)}
@@ -208,6 +220,11 @@ export function ExerciseFocus({
                     {ex.tracksWeight
                       ? `${fmtWeight(set.weightKg, unit)} × ${set.reps}`
                       : `${set.weightKg > 0 ? `+${fmtWeight(set.weightKg, unit)} · ` : ''}${set.reps} reps`}
+                    {assisted && set.assistKg !== undefined ? (
+                      <span className="ml-1 text-sm font-normal text-[var(--color-fg-muted)]">
+                        · {fmtWeight(set.assistKg, unit, false)} assist
+                      </span>
+                    ) : null}
                   </span>
                   {set.rpe ? <span className="tabular text-sm font-bold text-violet-300">@{set.rpe}</span> : null}
                   <span className="tabular shrink-0 text-sm font-bold text-[var(--color-xp-500)]">+{xp}</span>
@@ -216,7 +233,7 @@ export function ExerciseFocus({
             )
           }
           // Upcoming: faint line showing what it will pre-fill with.
-          const v = shownValues(ex, i, last?.sets)
+          const v = shownValues(ex, i, last?.sets, bodyKg)
           const planned = set.targetReps && !/^\d+$/.test(set.targetReps) ? set.targetReps : null
           return (
             <li

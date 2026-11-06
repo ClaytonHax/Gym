@@ -56,6 +56,10 @@ export interface WorkoutSet {
   speedKmh?: number
   /** Timed sets only: incline in %. */
   inclinePct?: number
+  /** Assisted exercises only: machine assistance in kg. weightKg is then body weight minus this. */
+  assistKg?: number
+  /** Assisted exercises only: body weight in kg when the set was logged (frozen). */
+  bodyweightKg?: number
 }
 
 export interface WorkoutExercise {
@@ -127,6 +131,10 @@ export interface Profile {
   seenTours?: string[]
   /** Vibration on taps and logged sets. Missing means on. */
   haptics?: boolean
+  /** Friend sharing (opt-in; missing means off). */
+  shareWorkouts?: boolean
+  shareStats?: boolean
+  shareProfile?: boolean
 }
 
 export interface PersonalRecord {

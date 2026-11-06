@@ -16,6 +16,7 @@ import { UpNext } from '../components/train/UpNext'
 import { TargetRepsSheet } from '../components/train/TargetRepsSheet'
 import { FinishFlow, type PlanChoice } from '../components/train/FinishFlow'
 import { shownValues } from '../components/train/setValues'
+import { assistedPatch, isAssisted, settleAssisted } from '../lib/assisted'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useSocial } from '../contexts/SocialContext'
@@ -32,7 +33,7 @@ import { dayKey, fmtDuration } from '../lib/date'
 import type { PhotoSvg } from '../lib/photoSvg'
 import { challengeState } from '../lib/social'
 import { fmtDuration as fmtStopwatch, isTimed, logModeOf } from '../lib/logMode'
-import { fmtVolume, fmtWeight } from '../lib/units'
+import { fmtVolume, fmtWeight, kgTo } from '../lib/units'
 import { DEFAULT_BODY_WEIGHT_KG, estimateCalories } from '../lib/calories'
 import { stripUndefined } from '../lib/clean'
 import { haptic } from '../lib/haptics'
@@ -199,7 +200,7 @@ export function WorkoutActive() {
   const { challenges } = useSocial()
   const { workouts, saveWorkout } = useWorkouts()
   const { saveRoutine } = useRoutines()
-  const { latest: latestBody } = useBodyLog()
+  const { latest: latestBody, saveEntry: saveBodyEntry } = useBodyLog()
   const { activeState, isRestDay, plans, updatePlan } = usePlans()
   const xp = useXp()
   const records = xp.records
@@ -558,9 +559,10 @@ export function WorkoutActive() {
             }
           : {
               key: keyOf(e.sets[i] ?? {}, '') || newKey(),
-              weightKg: s.weightKg,
+              weightKg: isAssisted(e) ? 0 : s.weightKg,
               reps: s.reps,
               done: false,
+              ...(isAssisted(e) && s.assistKg !== undefined ? { assistKg: s.assistKg } : {}),
               ...(e.sets[i]?.targetReps ? { targetReps: e.sets[i].targetReps } : {}),
             }
       ) as WorkoutSet[],
@@ -703,7 +705,7 @@ export function WorkoutActive() {
     setSaveError(null)
     try {
       // Drop unlogged sets and empty exercises so history stays clean.
-      const exercises = active.exercises
+      const exercises = settleAssisted(active.exercises, latestBody?.weightKg ?? null)
         .map((ex) =>
           stripKeys(
             dropUndefined({
@@ -835,7 +837,31 @@ export function WorkoutActive() {
   const paired = ex ? linkedToNext(exs, focusIdx) : false
   const inSuperset = ex ? paired || linkedToNext(exs, focusIdx - 1) : false
   const ssColor = inSuperset ? supersetColor(exs, paired ? focusIdx : focusIdx - 1) : undefined
-  const overload = ex && last && !timed ? hitTopOfRange(ex, last.sets) : false
+  // Assisted pull-ups progress by lowering assistance, so "add weight" never applies.
+  const overload = ex && last && !timed && !isAssisted(ex) ? hitTopOfRange(ex, last.sets) : false
+  const knownBodyKg = latestBody?.weightKg ?? null
+  const assistedEx = Boolean(ex && isAssisted(ex) && !timed)
+
+  function focusBodyField() {
+    document.querySelector<HTMLInputElement>('[data-body-input]')?.focus()
+  }
+
+  async function saveBodyWeight(kg: number) {
+    const rounded = Math.round(kg * 10) / 10
+    if (!Number.isFinite(rounded) || rounded < 20 || rounded > 400) {
+      toast(
+        `Enter a body weight between ${Math.round(kgTo(unit, 20))} and ${Math.round(kgTo(unit, 400))} ${unit}.`,
+        'error'
+      )
+      return
+    }
+    try {
+      await saveBodyEntry({ date: dayKey(), weightKg: rounded })
+      toast('Body weight saved.')
+    } catch {
+      toast('Could not save your body weight. Try again.', 'error')
+    }
+  }
 
   function focusRepsField() {
     repsRef.current?.querySelector('input')?.focus()
@@ -882,7 +908,7 @@ export function WorkoutActive() {
       }
     }
 
-    const v = shownValues(ex, panelIdx, last?.sets)
+    const v = shownValues(ex, panelIdx, last?.sets, knownBodyKg)
     if (isEditing) {
       return {
         label: `Update set ${panelIdx + 1}`,
@@ -893,6 +919,7 @@ export function WorkoutActive() {
         },
       }
     }
+    if (assistedEx && !v.bodyKg) return { label: 'Enter your body weight', tone: 'go', onPress: focusBodyField }
     if (v.reps <= 0) return { label: 'Set your reps', tone: 'go', onPress: focusRepsField }
     const w = fmtWeight(v.weightKg, unit)
     const what = ex.tracksWeight
@@ -904,7 +931,14 @@ export function WorkoutActive() {
     return {
       label: ex.tracksWeight || v.weightKg > 0 ? `${prefix} · ${what}` : `Log ${what}`,
       tone: 'go',
-      onPress: () => toggleSetDone(focusIdx, panelIdx, { reps: v.reps, weightKg: v.weightKg }),
+      onPress: () =>
+        toggleSetDone(
+          focusIdx,
+          panelIdx,
+          assistedEx && v.bodyKg
+            ? { reps: v.reps, ...assistedPatch(v.bodyKg, v.assistKg ?? 0) }
+            : { reps: v.reps, weightKg: v.weightKg }
+        ),
     }
   }
 
@@ -966,6 +1000,8 @@ export function WorkoutActive() {
             superset={inSuperset ? { color: ssColor } : undefined}
             panelIndex={panelIdx}
             editing={isEditing}
+            bodyKg={knownBodyKg}
+            onSaveBody={saveBodyWeight}
             repsRef={repsRef}
             onMenu={() => setMenuFor(focusIdx)}
             onEditTarget={() => setTargetFor(focusIdx)}
@@ -1244,7 +1280,7 @@ export function WorkoutActive() {
               variant="go"
               full
               onClick={() => {
-                save((prev) => (prev ? { ...prev, exercises: completeUnfinished(prev.exercises) } : prev))
+                save((prev) => (prev ? { ...prev, exercises: settleAssisted(completeUnfinished(prev.exercises), latestBody?.weightKg ?? null) } : prev))
                 setUnfinishedOpen(false)
                 setFinishOpen(true)
               }}

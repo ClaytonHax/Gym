@@ -224,10 +224,10 @@ export function timedPlaceholders(ex: WorkoutExercise, i: number, last: WorkoutS
 export function repSuggestion(
   ex: WorkoutExercise,
   i: number,
-  last?: Array<{ weightKg: number; reps: number }>
-): { weightKg: number; reps: number } | undefined {
+  last?: Array<{ weightKg: number; reps: number; assistKg?: number }>
+): { weightKg: number; reps: number; assistKg?: number } | undefined {
   const prev = [...ex.sets.slice(0, i)].reverse().find((s) => s.reps > 0 && !s.warmup)
-  if (prev) return { weightKg: prev.weightKg, reps: prev.reps }
+  if (prev) return { weightKg: prev.weightKg, reps: prev.reps, ...(prev.assistKg !== undefined ? { assistKg: prev.assistKg } : {}) }
   const l = last?.[i] ?? last?.[last.length - 1]
-  return l ? { weightKg: l.weightKg, reps: l.reps } : undefined
+  return l ? { weightKg: l.weightKg, reps: l.reps, ...(l.assistKg !== undefined ? { assistKg: l.assistKg } : {}) } : undefined
 }

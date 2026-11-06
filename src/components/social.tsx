@@ -287,10 +287,13 @@ export function ActivityCard({
   item,
   profile,
   onNameClick = true,
+  onOpenDetail,
 }: {
   item: ActivityItem
   profile: PublicProfile | undefined
   onNameClick?: boolean
+  /** Set when the friend shares this workout in depth. */
+  onOpenDetail?: () => void
 }) {
   const { user } = useAuth()
   const { react } = useSocial()
@@ -395,6 +398,12 @@ export function ActivityCard({
           {item.exercises.join(' · ')}
           {item.exerciseCount > item.exercises.length ? ` · +${item.exerciseCount - item.exercises.length} more` : ''}
         </p>
+      ) : null}
+
+      {onOpenDetail ? (
+        <Button variant="secondary" full className="mt-3" onClick={onOpenDetail}>
+          See full workout
+        </Button>
       ) : null}
 
       <div className="mt-3 flex items-center gap-2 border-t border-[var(--color-line)] pt-3">

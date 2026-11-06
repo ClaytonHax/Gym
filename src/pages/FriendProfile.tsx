@@ -30,10 +30,14 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useProfile, useSocial } from '../contexts/SocialContext'
 import { useToast } from '../contexts/ToastContext'
 import { useFeed } from '../hooks/useFeed'
+import { useFriendShared } from '../hooks/useFriendShared'
+import { SharedWorkoutSheet } from '../components/SharedWorkoutSheet'
+import { MUSCLE_COLORS } from '../data/exercises'
+import type { ProfileDetail, StatsDetail } from '../lib/sharing'
 import { useAuthorPlans } from '../hooks/usePublicPlans'
 import { PublicPlanList } from '../components/plans'
-import { addDays, dayKey } from '../lib/date'
-import { fmtWeight } from '../lib/units'
+import { addDays, dayKey, parseDayKey } from '../lib/date'
+import { fmtVolume, fmtWeight } from '../lib/units'
 import {
   challengeScore,
   challengeState,
@@ -50,7 +54,12 @@ import {
   type PublicProfile,
   type PublicStats,
 } from '../lib/social'
-import type { Workout } from '../types'
+import type { MuscleGroup, Unit, Workout } from '../types'
+
+/** "17 Aug" from a yyyy-mm-dd week start. */
+function weekLabel(day: string | undefined): string {
+  return day ? parseDayKey(day).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : ''
+}
 
 const VERSUS: BoardMetric[] = ['workouts', 'days', 'volume', 'sets', 'minutes']
 
@@ -115,7 +124,7 @@ function HeadToHead({ mine, theirs, theirName }: { mine: PublicStats; theirs: Pu
               <p className="mb-1 text-center text-xs font-semibold text-[var(--color-fg-muted)]">{METRICS[m].label}</p>
               <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                 <div className="flex items-center justify-end gap-2">
-                  <span className={`tabular text-sm font-bold ${a > b ? 'text-brand-400' : ''}`}>
+                  <span className={`tabular shrink-0 whitespace-nowrap text-sm font-bold ${a > b ? 'text-brand-400' : ''}`}>
                     {fmtMetric(m, a, profile.unit)}
                   </span>
                   <span className="flex h-2 w-full max-w-24 justify-end overflow-hidden rounded-full bg-[var(--color-surface-2)]">
@@ -138,7 +147,7 @@ function HeadToHead({ mine, theirs, theirName }: { mine: PublicStats; theirs: Pu
                   <span className="flex h-2 w-full max-w-24 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
                     <span className="block h-full rounded-full bg-sky-400" style={{ width: `${(b / max) * 100}%` }} />
                   </span>
-                  <span className={`tabular text-sm font-bold ${b > a ? 'text-sky-400' : ''}`}>
+                  <span className={`tabular shrink-0 whitespace-nowrap text-sm font-bold ${b > a ? 'text-sky-400' : ''}`}>
                     {fmtMetric(m, b, profile.unit)}
                   </span>
                 </div>
@@ -148,6 +157,121 @@ function HeadToHead({ mine, theirs, theirName }: { mine: PublicStats; theirs: Pu
         })}
       </ul>
     </Card>
+  )
+}
+
+function AboutSection({ details, unit }: { details: ProfileDetail; unit: Unit }) {
+  const tiles = [
+    details.bodyWeightKg ? { label: 'Body weight', value: fmtWeight(details.bodyWeightKg, unit) } : null,
+    details.bodyFatPct ? { label: 'Body fat', value: `${Math.round(details.bodyFatPct * 10) / 10}%` } : null,
+    details.heightCm ? { label: 'Height', value: `${Math.round(details.heightCm)} cm` } : null,
+    details.goalWeightKg ? { label: 'Goal', value: fmtWeight(details.goalWeightKg, unit) } : null,
+    details.weeklyGoal ? { label: 'Weekly goal', value: `${details.weeklyGoal} / week` } : null,
+    details.planName ? { label: 'Plan', value: details.planName } : null,
+  ].filter((t): t is { label: string; value: string } => t !== null)
+  if (tiles.length === 0) return null
+  return (
+    <section aria-label="About">
+      <SectionHeader title="About" />
+      <dl className="grid grid-cols-2 gap-2">
+        {tiles.map((t) => (
+          <div key={t.label} className="card min-w-0 px-3 py-2.5">
+            <dt className="text-[10px] font-bold uppercase tracking-wider text-[var(--color-fg-muted)]">{t.label}</dt>
+            <dd className="tabular truncate font-display text-xl font-bold leading-tight">{t.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  )
+}
+
+function StatsSection({ stats, unit }: { stats: StatsDetail; unit: Unit }) {
+  const [allRecords, setAllRecords] = useState(false)
+  const records = allRecords ? stats.records : stats.records.slice(0, 5)
+  const maxVol = Math.max(1, ...stats.weeklyVolume.map((w) => w.value))
+  const maxSets = Math.max(1, ...stats.muscleSets.map((m) => m.sets))
+  const hasVolume = stats.weeklyVolume.some((w) => w.value > 0)
+  if (stats.records.length === 0 && !hasVolume && stats.muscleSets.length === 0) return null
+  const heading = 'text-sm font-semibold normal-case tracking-normal'
+  return (
+    <section aria-label="Stats" className="flex flex-col gap-2">
+      <SectionHeader title="Stats" />
+      {stats.records.length > 0 ? (
+        <Card>
+          <h3 className={`mb-2 ${heading}`} style={{ fontFamily: 'var(--font-sans)' }}>
+            Personal records
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {records.map((r) => (
+              <li key={r.name} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{r.name}</span>
+                  <span className="tabular block text-xs text-[var(--color-fg-muted)]">
+                    {fmtWeight(r.bestWeightKg, unit)} × {r.bestReps}
+                  </span>
+                </span>
+                <span className="tabular shrink-0 text-right">
+                  <span className="block font-bold">{fmtWeight(r.e1rmKg, unit)}</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-[var(--color-fg-muted)]">est. 1RM</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {stats.records.length > 5 ? (
+            <Button variant="ghost" size="sm" full className="mt-2" onClick={() => setAllRecords((v) => !v)}>
+              {allRecords ? 'Show fewer' : `Show all ${stats.records.length}`}
+            </Button>
+          ) : null}
+        </Card>
+      ) : null}
+      {hasVolume ? (
+        <Card>
+          <h3 className={`mb-2 ${heading}`} style={{ fontFamily: 'var(--font-sans)' }}>
+            Weekly volume
+          </h3>
+          <div className="flex h-24 items-end gap-1" role="img" aria-label="Weekly volume, last 12 weeks">
+            {stats.weeklyVolume.map((w) => (
+              <div key={w.date} className="flex h-full min-w-0 flex-1 flex-col justify-end">
+                <div
+                  className="w-full rounded-t bg-brand-500"
+                  style={{ height: `${w.value > 0 ? Math.max(4, (w.value / maxVol) * 100) : 0}%` }}
+                  title={`${weekLabel(w.date)}: ${fmtVolume(w.value, unit)}`}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="tabular mt-1 flex justify-between text-[10px] text-[var(--color-fg-muted)]">
+            <span>{weekLabel(stats.weeklyVolume[0]?.date)}</span>
+            <span>Peak {fmtVolume(maxVol, unit)}</span>
+            <span>{weekLabel(stats.weeklyVolume[stats.weeklyVolume.length - 1]?.date)}</span>
+          </div>
+        </Card>
+      ) : null}
+      {stats.muscleSets.length > 0 ? (
+        <Card>
+          <h3 className={`mb-2 ${heading}`} style={{ fontFamily: 'var(--font-sans)' }}>
+            Muscle balance (30 days)
+          </h3>
+          <ul className="flex flex-col gap-2">
+            {stats.muscleSets.map((m) => (
+              <li key={m.muscle} className="grid grid-cols-[5.5rem_1fr_2rem] items-center gap-2 text-sm">
+                <span className="truncate">{m.muscle}</span>
+                <span className="h-2 overflow-hidden rounded-full bg-[var(--color-surface-2)]">
+                  <span
+                    className="block h-full rounded-full"
+                    style={{
+                      width: `${(m.sets / maxSets) * 100}%`,
+                      background: MUSCLE_COLORS[m.muscle as MuscleGroup] ?? MUSCLE_COLORS.Other,
+                    }}
+                  />
+                </span>
+                <span className="tabular text-right text-xs font-bold">{m.sets}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+    </section>
   )
 }
 
@@ -168,6 +292,8 @@ export function FriendProfile() {
   const friendNow = isFriend(friendUid)
   const authored = useAuthorPlans(friendUid)
   const { items, loading: feedLoading } = useFeed(friendNow ? [friendUid] : [], 10)
+  const shared = useFriendShared(friendUid, friendNow)
+  const [openWorkoutId, setOpenWorkoutId] = useState<string | null>(null)
 
   useEffect(() => {
     if (friendUid === user?.uid) navigate('/friends', { replace: true })
@@ -342,6 +468,9 @@ export function FriendProfile() {
             </section>
           ) : null}
 
+          {shared.details ? <AboutSection details={shared.details} unit={settings.unit} /> : null}
+          {shared.stats ? <StatsSection stats={shared.stats} unit={settings.unit} /> : null}
+
           <section aria-label="Plans">
             <SectionHeader title="Plans" />
             {authored.loading ? (
@@ -371,7 +500,12 @@ export function FriendProfile() {
               <ul className="flex flex-col gap-3">
                 {items.map((item) => (
                   <li key={item.id}>
-                    <ActivityCard item={item} profile={profile} onNameClick={false} />
+                    <ActivityCard
+                      item={item}
+                      profile={profile}
+                      onNameClick={false}
+                      onOpenDetail={shared.workouts.has(item.id) ? () => setOpenWorkoutId(item.id) : undefined}
+                    />
                   </li>
                 ))}
               </ul>
@@ -382,6 +516,10 @@ export function FriendProfile() {
             Remove friend
           </Button>
 
+          <SharedWorkoutSheet
+            workout={openWorkoutId ? (shared.workouts.get(openWorkoutId) ?? null) : null}
+            onClose={() => setOpenWorkoutId(null)}
+          />
           <NudgeSheet friend={nudging} onClose={() => setNudging(null)} />
           <NewChallengeSheet
             open={challenging}
