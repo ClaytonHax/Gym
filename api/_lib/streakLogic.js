@@ -84,24 +84,27 @@ export function evaluateWatch(w, now, minHour = 15) {
   if (!(lag >= 0 && lag <= 2)) return none
   const rest = new Set(Array.isArray(w.restDays) ? w.restDays : [])
   const trainedToday = w.lastWorkoutDay === today
+  let freezes = typeof w.freezes === 'number' ? w.freezes : 0
 
   if (w.unit === 'day') {
     const honoured = (d) => rest.has(d) || w.lastWorkoutDay === d
-    let end = honoured(w.asOfDay) ? w.asOfDay : addDay(w.asOfDay, -1)
+    let end = addDay(w.asOfDay, -1)
     let chain = w.current
-    // Days since the doc was written count if planned rest or a synced workout.
-    for (let d = addDay(w.asOfDay, 1); d < today; d = addDay(d, 1)) {
-      if (end === addDay(d, -1) && honoured(d)) {
-        chain++
+    // `current` already includes asOfDay when honoured. Later days count if planned
+    // rest or a synced workout; a freeze the app will spend covers an unmet past day.
+    for (let d = w.asOfDay; d <= today; d = addDay(d, 1)) {
+      if (honoured(d)) {
+        if (d !== w.asOfDay) chain++
+        end = d
+      } else if (d < today && freezes > 0) {
+        freezes--
         end = d
       } else break
     }
     const yesterday = addDay(today, -1)
     if (trainedToday || chain < 2) return none
-    if (end === yesterday) {
-      if (rest.has(today)) return none
-      return now.hour >= minHour ? { status: 'risk', streak: chain } : none
-    }
+    // With a freeze left, tonight doesn't end anything.
+    if (end === yesterday) return now.hour >= minHour && freezes === 0 ? { status: 'risk', streak: chain } : none
     // Chain broke exactly on yesterday: end is the day before it.
     if (end === addDay(yesterday, -1) && !rest.has(yesterday)) return { status: 'lost', streak: chain }
     return none
@@ -113,8 +116,10 @@ export function evaluateWatch(w, now, minHour = 15) {
   if (w.weekStart === monday) {
     if (trainedToday) return none
     const remaining = goal - w.workoutsThisWeek
-    const daysLeft = 7 - weekdayIndex(today)
-    if (remaining > 0 && remaining >= daysLeft && w.current >= 1) {
+    // Only days that can actually be trained on.
+    let daysLeft = 0
+    for (let i = weekdayIndex(today); i < 7; i++) if (!rest.has(addDay(monday, i))) daysLeft++
+    if (freezes === 0 && !rest.has(today) && remaining > 0 && remaining >= daysLeft && w.current >= 1) {
       return now.hour >= minHour ? { status: 'risk', streak: w.current } : none
     }
     if (today === monday && w.prevWeekWorkouts < goal && w.streakBeforePrev >= 1) {
@@ -124,7 +129,7 @@ export function evaluateWatch(w, now, minHour = 15) {
   }
   if (w.weekStart === addDay(monday, -7) && today === monday) {
     // Doc still from last week: its week total is final.
-    if (w.workoutsThisWeek < goal && w.current >= 1) return { status: 'lost', streak: w.current }
+    if (freezes === 0 && w.workoutsThisWeek < goal && w.current >= 1) return { status: 'lost', streak: w.current }
   }
   return none
 }

@@ -113,7 +113,7 @@ service cloud.firestore {
       let d = request.resource.data;
       return d.keys().hasOnly(['tz', 'unit', 'current', 'asOfDay', 'lastWorkoutDay', 'restDays', 'weeklyGoal',
           'weekStart', 'workoutsThisWeek', 'prevWeekWorkouts', 'streakBeforePrev', 'updatedAt',
-          'openSince', 'planDays', 'trainedDays'])
+          'openSince', 'planDays', 'trainedDays', 'freezes'])
         && d.tz is string && d.tz.size() <= 64
         && d.unit in ['day', 'week']
         && d.current is int && d.current >= 0 && d.current <= 100000
@@ -126,6 +126,7 @@ service cloud.firestore {
         && d.prevWeekWorkouts is int && d.prevWeekWorkouts >= 0 && d.prevWeekWorkouts <= 1000
         && d.streakBeforePrev is int && d.streakBeforePrev >= 0 && d.streakBeforePrev <= 100000
         && d.updatedAt is string && d.updatedAt.size() <= 40
+        && (!('freezes' in d) || (d.freezes is int && d.freezes >= 0 && d.freezes <= 1000))
         && (!('openSince' in d) || (d.openSince is string && d.openSince.size() <= 40))
         && (!('planDays' in d) || (d.planDays is list && d.planDays.size() <= 14))
         && (!('trainedDays' in d) || (d.trainedDays is list && d.trainedDays.size() <= 14));

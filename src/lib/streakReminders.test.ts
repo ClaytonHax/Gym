@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 // @ts-expect-error plain JS module shared with the Vercel cron
-import { forgottenWorkout, missedPlanDay, reminderHour } from '../../api/_lib/streakLogic.js'
+import { evaluateWatch, forgottenWorkout, missedPlanDay, reminderHour } from '../../api/_lib/streakLogic.js'
 
 const watch = (extra = {}) => ({
   asOfDay: '2026-10-26',
@@ -47,4 +47,38 @@ it('only reminds during waking hours', () => {
   expect(reminderHour(3)).toBe(false)
   expect(reminderHour(9)).toBe(true)
   expect(reminderHour(23)).toBe(false)
+})
+
+describe('evaluateWatch with rest days and freezes', () => {
+  const day = (extra = {}) => ({ unit: 'day', current: 5, asOfDay: '2026-11-07', lastWorkoutDay: '2026-11-07', restDays: [], weeklyGoal: 3, ...extra })
+  const week = (extra = {}) => ({ unit: 'week', current: 2, asOfDay: '2026-11-07', lastWorkoutDay: '2026-11-06', restDays: [], weeklyGoal: 3, weekStart: '2026-11-02', workoutsThisWeek: 2, prevWeekWorkouts: 3, streakBeforePrev: 1, ...extra })
+  const sun = { day: '2026-11-08', hour: 18 }
+  const mon = { day: '2026-11-09', hour: 18 }
+
+  it('warns on an ordinary day', () => {
+    expect(evaluateWatch(day(), sun).status).toBe('risk')
+  })
+  it('stays quiet on a rest day', () => {
+    expect(evaluateWatch(day({ restDays: ['2026-11-08'] }), sun).status).toBe(null)
+  })
+  it('carries the streak over a rest day', () => {
+    expect(evaluateWatch(day({ restDays: ['2026-11-08'] }), mon)).toEqual({ status: 'risk', streak: 6 })
+  })
+  it('reports a real break', () => {
+    expect(evaluateWatch(day(), mon).status).toBe('lost')
+  })
+  it('does not warn or report lost with a freeze left', () => {
+    expect(evaluateWatch(day({ freezes: 1 }), sun).status).toBe(null)
+    expect(evaluateWatch(day({ freezes: 1 }), mon).status).toBe('risk')
+    expect(evaluateWatch(day({ freezes: 2 }), mon).status).toBe(null)
+  })
+  it('weekly: no warning on a rest day', () => {
+    expect(evaluateWatch(week({ restDays: ['2026-11-08'] }), sun).status).toBe(null)
+  })
+  it('weekly: warns on the last day you can train', () => {
+    expect(evaluateWatch(week({ restDays: ['2026-11-08'], asOfDay: '2026-11-06' }), { day: '2026-11-07', hour: 18 }).status).toBe('risk')
+  })
+  it('weekly: a freeze silences the warning', () => {
+    expect(evaluateWatch(week({ freezes: 1 }), sun).status).toBe(null)
+  })
 })

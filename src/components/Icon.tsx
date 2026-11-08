@@ -45,6 +45,7 @@ export type IconName =
   | 'link'
   | 'bookmark'
   | 'moon'
+  | 'snowflake'
   | 'skip-forward'
   | 'pencil'
   | 'star'
@@ -121,6 +122,7 @@ const PATHS: Record<IconName, string> = {
   link: 'M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5',
   bookmark: 'M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z',
   moon: 'M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z',
+  snowflake: 'M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9 4.9 19.1M9 3l3 3 3-3M9 21l3-3 3 3M3 9l3 3-3 3M21 9l-3 3 3 3',
   'skip-forward': 'M5 4l10 8-10 8zM19 5v14',
   pencil: 'M17 3l4 4L7.5 20.5 3 21l.5-4.5zM15 5l4 4',
   star: 'M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z',

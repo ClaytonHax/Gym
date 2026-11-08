@@ -268,7 +268,7 @@ export interface ScheduleSlot {
   /** 1-based; 0 before start. */
   dayNumber: number
   cycleLength: number
-  /** Plan rest day or adjusted date. */
+  /** Plan rest day, always-rest weekday or adjusted date. */
   isRest: boolean
   adjusted?: 'delay' | 'skip'
   isFuture: boolean

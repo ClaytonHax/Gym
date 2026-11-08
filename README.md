@@ -20,7 +20,7 @@ composition over time. React + TypeScript + Vite, with Firebase Auth and Firesto
 - Sessions survive a refresh, a crash or a dead connection — and resume on any device
 
 **Progress**
-- Streaks and a GitHub-style activity heatmap (planned rest days keep a streak alive; weekly-goal streaks without a plan)
+- Streaks and a GitHub-style activity heatmap (planned rest days keep a streak alive; weekly-goal streaks without a plan; every level up earns a streak freeze that covers a missed day)
 - Weekly volume, estimated 1RM trends (Epley), muscle-group balance radar
 - Automatic personal records per exercise
 - Muscle recovery card showing what's ready to train again (rule-based, no AI)

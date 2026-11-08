@@ -218,6 +218,10 @@ const watch = (extra = {}) => ({
 await t('owner writes own streakWatch', () => assertSucceeds(setDoc(doc(B, 'streakWatch/bob'), watch())))
 await t('streakWatch with reminder fields succeeds', () =>
   assertSucceeds(setDoc(doc(B, 'streakWatch/bob'), watch({ openSince: '2026-10-24T09:00:00Z', planDays: ['2026-10-23'], trainedDays: [] }))))
+await t('streakWatch with freezes succeeds', () =>
+  assertSucceeds(setDoc(doc(B, 'streakWatch/bob'), watch({ freezes: 2 }))))
+await t('streakWatch with negative freezes fails', () =>
+  assertFails(setDoc(doc(B, 'streakWatch/bob'), watch({ freezes: -1 }))))
 await t('streakWatch with too many planDays fails', () =>
   assertFails(setDoc(doc(B, 'streakWatch/bob'), watch({ planDays: Array(15).fill('2026-10-25') }))))
 await t('streakWatch with extra field fails', () => assertFails(setDoc(doc(B, 'streakWatch/bob'), watch({ secret: 'x' }))))

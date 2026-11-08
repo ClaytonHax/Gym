@@ -308,6 +308,11 @@ export function FinishFlow({
                   Level up!
                 </span>
                 <span className="num-display text-4xl text-xp-400">Level {xp.levelAfter.level}</span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-rest">
+                  <Icon name="snowflake" size={16} />
+                  +{xp.levelAfter.level - xp.levelBefore.level} streak{' '}
+                  {xp.levelAfter.level - xp.levelBefore.level === 1 ? 'freeze' : 'freezes'}
+                </span>
               </div>
             ) : null}
             <div>

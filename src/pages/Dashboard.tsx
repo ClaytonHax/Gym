@@ -30,7 +30,7 @@ import { StarterPlans } from '../components/plans'
 import { HomeInstallBanner } from '../components/InstallPrompt'
 import { daySummary, startPlanDay } from '../lib/plans'
 import { nextWorkoutLabel, nextWorkoutSlot } from '../lib/planUiLogic'
-import { computeStreaks, workoutsByDay } from '../lib/streaks'
+import { computeStreaks, freezeJustUsed, workoutsByDay } from '../lib/streaks'
 import { fmtVolume, fmtWeight } from '../lib/units'
 import { addDays, dayKey, fmtDuration, parseDayKey, relativeDay, startOfWeek } from '../lib/date'
 import { muscleRecovery } from '../lib/recovery'
@@ -203,6 +203,12 @@ function StreakCard({ stats }: { stats: ReturnType<typeof computeStreaks> }) {
         {stats.mode === 'plan'
           ? 'Every trained day and every planned rest day keeps your streak alive.'
           : `Hit ${stats.weeklyGoal} sessions a week to build a weekly streak.`}
+      </p>
+      <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-rest">
+        <Icon name="snowflake" size={14} className="shrink-0" />
+        {freezeJustUsed(stats)
+          ? `A streak freeze saved your streak ${unit === 'day' ? 'yesterday' : 'last week'}. ${stats.freezes} left.`
+          : `${stats.freezes} streak ${stats.freezes === 1 ? 'freeze' : 'freezes'}. Earn one every level up.`}
       </p>
     </Card>
   )

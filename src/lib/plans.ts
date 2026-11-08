@@ -54,13 +54,15 @@ function daysBetween(a: DayKey, b: DayKey): number {
 /**
  * What the plan says for `date`.
  * offset = days since start minus earlier 'delay's (each pushes the cycle back a day);
- * 'skip' only blanks its own date. An adjustment on `date` itself forces rest.
+ * 'skip' only blanks its own date. An adjustment on `date` itself forces rest, and
+ * so does an always-rest weekday (0 = Monday), which like 'skip' moves nothing else.
  */
 export function scheduleFor(
   plan: Plan,
   state: ActivePlanState,
   date: Date | DayKey,
-  now: Date = new Date()
+  now: Date = new Date(),
+  restWeekdays: number[] = []
 ): ScheduleSlot {
   const key = typeof date === 'string' ? date : dayKey(date)
   const today = dayKey(now)
@@ -82,7 +84,7 @@ export function scheduleFor(
     day,
     cycle,
     dayNumber: dayIndex + 1,
-    isRest: day.kind === 'rest' || !!adj,
+    isRest: day.kind === 'rest' || !!adj || restWeekdays.includes((parseDayKey(key).getDay() + 6) % 7),
     ...(adj ? { adjusted: adj.type } : {}),
   }
 }
@@ -92,10 +94,11 @@ export function scheduleRange(
   state: ActivePlanState,
   from: Date | DayKey,
   n: number,
-  now: Date = new Date()
+  now: Date = new Date(),
+  restWeekdays: number[] = []
 ): ScheduleSlot[] {
   const start = toDate(from)
-  return Array.from({ length: n }, (_, i) => scheduleFor(plan, state, addDays(start, i), now))
+  return Array.from({ length: n }, (_, i) => scheduleFor(plan, state, addDays(start, i), now, restWeekdays))
 }
 
 /** True when the plan (or an adjustment) makes this date a rest day; false before startDate. */

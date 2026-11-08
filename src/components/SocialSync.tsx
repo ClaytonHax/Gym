@@ -34,7 +34,7 @@ export function useMyPublicStats() {
       planStartDate: activeState?.startDate,
       weeklyGoal: profile.weeklyGoal,
     })
-    const watch = buildStreakWatch(workouts, streaks, { isRestDay, isTrainingDay, openSince, weeklyGoal: profile.weeklyGoal })
+    const watch = buildStreakWatch(workouts, streaks, { isRestDay, isTrainingDay, openSince })
     const risk = evaluateWatch(watch, localNow(), 0)
     const base = buildPublicStats(workouts, streaks, profile.weeklyGoal, xpHistory(workouts).total)
     return {

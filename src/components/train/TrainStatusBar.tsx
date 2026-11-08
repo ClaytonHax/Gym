@@ -34,7 +34,7 @@ export function TrainStatusBar({
         <button
           type="button"
           onClick={() => setOpen('streak')}
-          aria-label={`${plural(streak.current, unit)} streak${streak.todayDone ? '' : ', not trained yet today'}`}
+          aria-label={`${plural(streak.current, unit)} streak${streak.todayDone || streak.todayRest ? '' : ', not trained yet today'}`}
           className={`${PILL} ${streak.current > 0 ? 'text-flame' : 'text-[var(--color-fg-muted)]'}`}
         >
           <Icon name="flame" size={24} className={streak.todayDone ? 'animate-flame' : ''} />
@@ -92,8 +92,21 @@ export function TrainStatusBar({
             </dd>
           </div>
         </dl>
+        <div className="card mt-3 flex items-center gap-3 p-3">
+          <Icon name="snowflake" size={24} className="shrink-0 text-rest" />
+          <p className="text-sm">
+            <span className="font-bold">{plural(streak.freezes, 'streak freeze')}</span>
+            <span className="text-[var(--color-fg-muted)]">. Earn one every level up. Each covers a missed {unit} automatically.</span>
+          </p>
+        </div>
         <p className="mt-4 text-center text-sm font-semibold text-[var(--color-fg-muted)]">
-          {streak.todayDone ? "You've trained today. Streak safe." : 'Train today to keep it alive.'}
+          {streak.todayDone
+            ? "You've trained today. Streak safe."
+            : streak.todayRest
+              ? 'Rest day. Streak safe.'
+              : streak.freezes > 0
+                ? 'Train today, or a streak freeze covers it.'
+                : 'Train today to keep it alive.'}
         </p>
       </Sheet>
 

@@ -1,6 +1,7 @@
 import type { Workout, WorkoutExercise, WorkoutSet } from '../types'
 import { estimate1rm } from './stats'
 import { isTimed } from './logMode'
+import { dayKey } from './date'
 
 /** Every number that feeds XP lives here so the rules read in one place. */
 export const XP_RULES = { set: 10, warmup: 3, exercise: 20, finish: 50, pr: 40 } as const
@@ -110,6 +111,24 @@ export function levelFor(totalXp: number): LevelInfo {
     totalForNext: start + levelSize,
     progress: xpIntoLevel / levelSize,
   }
+}
+
+/**
+ * Local day of each level gained on or after `since`, oldest first. A workout that
+ * crosses two levels appears twice.
+ */
+export function levelUpDays(workouts: Workout[], since: string): string[] {
+  const { byWorkout } = xpHistory(workouts)
+  const days: string[] = []
+  let total = 0
+  for (const w of [...workouts].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {
+    const before = levelFor(total).level
+    total += byWorkout.get(w.id) ?? 0
+    const gained = levelFor(total).level - before
+    const day = dayKey(new Date(w.startedAt))
+    if (day >= since) for (let i = 0; i < gained; i++) days.push(day)
+  }
+  return days
 }
 
 /** Did going from `before` to `after` cross one or more levels? Returns the new level or null. */

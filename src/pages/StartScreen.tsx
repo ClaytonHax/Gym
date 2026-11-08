@@ -194,7 +194,7 @@ export function StartScreen({ onStart }: { onStart: (workout: ActiveWorkout) => 
             <p className="text-sm text-[var(--color-fg-muted)]">
               {today.adjusted
                 ? 'You moved today’s workout. Rest up, or train anyway.'
-                : 'Your plan has a rest day here. Muscles grow while you recover.'}
+                : 'Today is a rest day. Muscles grow while you recover.'}
             </p>
             <button
               type="button"

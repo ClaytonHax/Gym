@@ -1,5 +1,6 @@
 import type { Workout } from '../types'
 import { addDays, dayKey, parseDayKey, startOfWeek } from './date'
+import { levelUpDays } from './xp'
 
 /** yyyy-mm-dd local-day key (see lib/date.ts dayKey). */
 type DayKey = string
@@ -41,6 +42,12 @@ export interface StreakStats {
   current: number
   longest: number
   todayDone: boolean
+  /** Today is a planned or always-rest day. */
+  todayRest: boolean
+  /** Streak freezes still available. */
+  freezes: number
+  /** Days (plan) or week Mondays (weekly) a freeze covered, oldest first. */
+  frozen: DayKey[]
   workoutsThisWeek: number
   weeklyGoal: number
   totalWorkouts: number
@@ -139,16 +146,22 @@ export function buildHeatmap(
   return { weeks: grid, months, thresholds }
 }
 
+/** Streak freezes are earned from this day on; earlier level-ups don't bank any. */
+export const FREEZES_START = '2026-11-08'
+
 /**
  * Streak definitions
  * - Plan mode (an active plan: isRestDay + planStartDate): a day is "honoured"
- *   when a workout was logged OR it is a planned rest day. The current streak
- *   walks back from today; today being unmet neither breaks nor counts (the day
- *   isn't over), a past unmet day breaks it, and nothing before planStartDate is
- *   considered. Longest runs the same rule over the whole plan history.
+ *   when a workout was logged OR it is a planned rest day. Today being unmet
+ *   neither breaks nor counts (the day isn't over), a past unmet day breaks the
+ *   run, and nothing before planStartDate is considered.
  * - Weekly-goal mode (no plan): consecutive Monday-first weeks with at least
- *   `weeklyGoal` workouts. The current week counts once met and doesn't break
- *   the streak while still in progress.
+ *   `weeklyGoal` workouts, capped at the days that aren't always-rest. The current
+ *   week counts once met and doesn't break the streak while still in progress.
+ * - Freezes: one per level gained since FREEZES_START. A freeze is spent, oldest
+ *   gap first, on a past unmet day (or week) in a running streak; it keeps the run
+ *   alive without adding to it. Everything is derived from history, so it needs no
+ *   storage and agrees across devices.
  */
 export function computeStreaks(workouts: Workout[], opts: StreakOptions): StreakStats {
   const now = opts.today ?? new Date()
@@ -160,10 +173,16 @@ export function computeStreaks(workouts: Workout[], opts: StreakOptions): Streak
 
   const base = {
     todayDone: byDay.has(todayKey),
+    todayRest: !!opts.isRestDay?.(todayKey),
     workoutsThisWeek: thisWeek,
     weeklyGoal: opts.weeklyGoal,
     totalWorkouts: workouts.length,
   }
+
+  const earned = levelUpDays(workouts, FREEZES_START)
+  const earnedBy = (key: DayKey) => earned.filter((d) => d <= key).length
+  const frozen: DayKey[] = []
+  const freezes = () => earned.length - frozen.length
 
   if (opts.isRestDay && opts.planStartDate) {
     const isRestDay = opts.isRestDay
@@ -171,24 +190,19 @@ export function computeStreaks(workouts: Workout[], opts: StreakOptions): Streak
     const start = parseDayKey(opts.planStartDate)
     const today = parseDayKey(todayKey)
 
-    let current = 0
-    for (let d = today; d >= start; d = addDays(d, -1)) {
-      const key = dayKey(d)
-      if (honoured(key)) current++
-      else if (key !== todayKey) break
-    }
-
-    let longest = 0
     let run = 0
+    let longest = 0
     for (let d = start; d <= today; d = addDays(d, 1)) {
-      if (honoured(dayKey(d))) {
+      const key = dayKey(d)
+      if (honoured(key)) {
         run++
         if (run > longest) longest = run
-      } else if (dayKey(d) !== todayKey) {
-        run = 0
+      } else if (key !== todayKey) {
+        if (run > 0 && earnedBy(key) > frozen.length) frozen.push(key)
+        else run = 0
       }
     }
-    return { mode: 'plan', current, longest: Math.max(longest, current), ...base }
+    return { mode: 'plan', current: run, longest, freezes: freezes(), frozen, ...base }
   }
 
   const perWeek = new Map<DayKey, number>()
@@ -196,29 +210,43 @@ export function computeStreaks(workouts: Workout[], opts: StreakOptions): Streak
     const k = dayKey(startOfWeek(new Date(w.startedAt)))
     perWeek.set(k, (perWeek.get(k) ?? 0) + 1)
   }
-  const met = (monday: Date) => (perWeek.get(dayKey(monday)) ?? 0) >= goal
+  // Rest days can't be trained on, so a goal of 7 with Sundays off means 6.
+  const goalFor = (monday: Date) => {
+    let open = 7
+    if (opts.isRestDay) for (let i = 0; i < 7; i++) if (opts.isRestDay(dayKey(addDays(monday, i)))) open--
+    return Math.max(1, Math.min(goal, open))
+  }
+  const met = (monday: Date) => (perWeek.get(dayKey(monday)) ?? 0) >= goalFor(monday)
 
   const thisMonday = startOfWeek(now)
-  let current = 0
-  for (let m = thisMonday; ; m = addDays(m, -7)) {
-    if (met(m)) current++
-    else if (m.getTime() !== thisMonday.getTime()) break
-    else if (perWeek.size === 0) break
-    if (current > 5000) break
-  }
-
+  let run = 0
   let longest = 0
   if (workouts.length > 0) {
     const earliest = startOfWeek(new Date(workouts.reduce((a, w) => (w.startedAt < a ? w.startedAt : a), workouts[0].startedAt)))
-    let run = 0
     for (let m = earliest; m.getTime() <= thisMonday.getTime(); m = addDays(m, 7)) {
       if (met(m)) {
         run++
         if (run > longest) longest = run
       } else if (m.getTime() !== thisMonday.getTime()) {
-        run = 0
+        if (run > 0 && earnedBy(dayKey(addDays(m, 6))) > frozen.length) frozen.push(dayKey(m))
+        else run = 0
       }
     }
   }
-  return { mode: 'weekly-goal', current, longest: Math.max(longest, current), ...base }
+  return {
+    mode: 'weekly-goal',
+    current: run,
+    longest,
+    freezes: freezes(),
+    frozen,
+    ...base,
+    weeklyGoal: Math.min(opts.weeklyGoal, goalFor(thisMonday)),
+  }
+}
+
+/** Did a freeze cover yesterday (plan mode) or last week (weekly mode)? */
+export function freezeJustUsed(stats: StreakStats, today: Date = new Date()): boolean {
+  const last = stats.frozen[stats.frozen.length - 1]
+  if (!last) return false
+  return last === dayKey(stats.mode === 'plan' ? addDays(today, -1) : addDays(startOfWeek(today), -7))
 }

@@ -39,6 +39,8 @@ export function clean<T>(value: T): T {
 
 export function usePlans(): UsePlans {
   const { user } = useAuth()
+  const { profile } = useSettings()
+  const restWeekdays = profile.restWeekdays
   const [plans, setPlans] = useState<Plan[]>([])
   const [plansLoaded, setPlansLoaded] = useState(false)
   const [activeState, setActiveState] = useState<ActivePlanState | null>(null)
@@ -102,21 +104,19 @@ export function usePlans(): UsePlans {
   )
 
   const today = useMemo(
-    () => (activePlan && activeState ? scheduleFor(activePlan, activeState, todayKey) : null),
+    () => (activePlan && activeState ? scheduleFor(activePlan, activeState, todayKey, new Date(), restWeekdays) : null),
     // todayKey is the intended trigger for recomputing when the day changes.
-    [activePlan, activeState, todayKey]
+    [activePlan, activeState, todayKey, restWeekdays]
   )
 
   const upcoming = useCallback(
     (n = 7) =>
       activePlan && activeState
-        ? scheduleRange(activePlan, activeState, todayKey, n, new Date())
+        ? scheduleRange(activePlan, activeState, todayKey, n, new Date(), restWeekdays)
         : [],
-    [activePlan, activeState, todayKey]
+    [activePlan, activeState, todayKey, restWeekdays]
   )
 
-  const { profile } = useSettings()
-  const restWeekdays = profile.restWeekdays
   const isRestDay = useMemo(() => {
     const fixed = new Set(restWeekdays ?? [])
     const planned = activePlan && activeState
