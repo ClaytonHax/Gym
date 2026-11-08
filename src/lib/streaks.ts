@@ -146,8 +146,10 @@ export function buildHeatmap(
   return { weeks: grid, months, thresholds }
 }
 
-/** Streak freezes are earned from this day on; earlier level-ups don't bank any. */
+/** Freezes launched this day: earlier level-ups don't bank any and earlier gaps can't spend any. */
 export const FREEZES_START = '2026-11-08'
+/** Everyone starts with these, existing users included. */
+export const STARTER_FREEZES = 3
 
 /**
  * Streak definitions
@@ -158,8 +160,9 @@ export const FREEZES_START = '2026-11-08'
  * - Weekly-goal mode (no plan): consecutive Monday-first weeks with at least
  *   `weeklyGoal` workouts, capped at the days that aren't always-rest. The current
  *   week counts once met and doesn't break the streak while still in progress.
- * - Freezes: one per level gained since FREEZES_START. A freeze is spent, oldest
- *   gap first, on a past unmet day (or week) in a running streak; it keeps the run
+ * - Freezes: STARTER_FREEZES plus one per level gained since FREEZES_START. A freeze
+ *   is spent, oldest gap first, on a past unmet day (or week) from FREEZES_START on,
+ *   in a running streak; it keeps the run
  *   alive without adding to it. Everything is derived from history, so it needs no
  *   storage and agrees across devices.
  */
@@ -180,9 +183,10 @@ export function computeStreaks(workouts: Workout[], opts: StreakOptions): Streak
   }
 
   const earned = levelUpDays(workouts, FREEZES_START)
-  const earnedBy = (key: DayKey) => earned.filter((d) => d <= key).length
+  const earnedBy = (key: DayKey) =>
+    key < FREEZES_START ? 0 : STARTER_FREEZES + earned.filter((d) => d <= key).length
   const frozen: DayKey[] = []
-  const freezes = () => earned.length - frozen.length
+  const freezes = () => STARTER_FREEZES + earned.length - frozen.length
 
   if (opts.isRestDay && opts.planStartDate) {
     const isRestDay = opts.isRestDay

@@ -30,32 +30,45 @@ describe('plan streaks and rest days', () => {
 describe('streak freezes', () => {
   const plan = (now: string) => ({ isRestDay: noRest, planStartDate: '2026-11-09', weeklyGoal: 3, today: today(now) })
 
-  it('earns one per level gained from launch on', () => {
-    expect(computeStreaks(levelUpOn('2026-11-09'), plan('2026-11-09')).freezes).toBe(1)
-    expect(computeStreaks(levelUpOn('2026-11-01'), plan('2026-11-09')).freezes).toBe(0)
+  it('starts everyone with three', () => {
+    expect(computeStreaks([], plan('2026-11-09')).freezes).toBe(3)
+    expect(computeStreaks([], { weeklyGoal: 3, today: today('2026-11-09') }).freezes).toBe(3)
+  })
+  it('earns one more per level gained from launch on', () => {
+    expect(computeStreaks(levelUpOn('2026-11-09'), plan('2026-11-09')).freezes).toBe(4)
+    expect(computeStreaks(levelUpOn('2026-11-01'), plan('2026-11-09')).freezes).toBe(3)
+  })
+  it('does not spend any on gaps before launch', () => {
+    const s = computeStreaks([at('2026-11-02'), at('2026-11-04')], {
+      isRestDay: noRest, planStartDate: '2026-11-02', weeklyGoal: 3, today: today('2026-11-04'),
+    })
+    expect(s.current).toBe(1)
+    expect(s.frozen).toEqual([])
+    expect(s.freezes).toBe(3)
   })
   it('spends one on a missed day and keeps the run without adding to it', () => {
     const w = [...levelUpOn('2026-11-09'), at('2026-11-11')]
     const s = computeStreaks(w, plan('2026-11-11'))
     expect(s.current).toBe(2)
     expect(s.frozen).toEqual(['2026-11-10'])
-    expect(s.freezes).toBe(0)
+    expect(s.freezes).toBe(3)
   })
   it('breaks once freezes run out', () => {
-    const w = [...levelUpOn('2026-11-09'), at('2026-11-12')]
-    const s = computeStreaks(w, plan('2026-11-12'))
+    const w = [...levelUpOn('2026-11-09'), at('2026-11-15')]
+    const s = computeStreaks(w, plan('2026-11-15'))
     expect(s.current).toBe(1)
-    expect(s.frozen).toEqual(['2026-11-10'])
+    expect(s.frozen).toEqual(['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13'])
+    expect(s.freezes).toBe(0)
   })
   it('never spends one on today, or with no streak running', () => {
-    expect(computeStreaks(levelUpOn('2026-11-09'), plan('2026-11-09')).freezes).toBe(1)
+    expect(computeStreaks(levelUpOn('2026-11-09'), plan('2026-11-09')).freezes).toBe(4)
     const noRun = computeStreaks(levelUpOn('2026-11-12'), plan('2026-11-12'))
     expect(noRun.frozen).toEqual([])
-    expect(noRun.freezes).toBe(1)
+    expect(noRun.freezes).toBe(4)
   })
   it('never spends one on a rest day', () => {
     const s = computeStreaks(levelUpOn('2026-11-14'), { isRestDay: isSunday, planStartDate: '2026-11-14', weeklyGoal: 3, today: today('2026-11-16') })
-    expect(s.freezes).toBe(1)
+    expect(s.freezes).toBe(4)
     expect(s.current).toBe(2)
   })
   it('covers a missed week in weekly mode', () => {
