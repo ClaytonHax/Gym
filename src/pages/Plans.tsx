@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Icon } from '../components/Icon'
 import { PlanUpdateCard, PublicPlanList } from '../components/plans'
-import { PlanSourcePill, PlanStats, SwitchPlanSheet } from '../components/planUi'
+import { PlanSourcePill, PlanStats, RestartSplitSheet, SwitchPlanSheet } from '../components/planUi'
 import { Badge, Button, ConfirmSheet, IconButton, PageTitle, Skeleton } from '../components/ui'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
@@ -121,6 +121,7 @@ export function Plans() {
   const nextSlot = nextWorkoutSlot(upcoming(9), todayDone)
   const [pending, setPending] = useState<Pending | null>(null)
   const [switching, setSwitching] = useState<Plan | null>(null)
+  const [restarting, setRestarting] = useState(false)
 
   async function run(action: () => Promise<unknown>, done: string) {
     try {
@@ -244,7 +245,20 @@ export function Plans() {
             <Button variant="secondary" size="sm" icon="eye" onClick={() => navigate(`/plans/view/${activePlan.id}`)}>
               View plan
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'deactivate' })}>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="rotate"
+              onClick={() => setRestarting(true)}
+            >
+              Restart split
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPending({ kind: 'deactivate' })}
+              className="col-span-2"
+            >
               Deactivate
             </Button>
           </div>
@@ -371,6 +385,7 @@ export function Plans() {
       ) : null}
 
       <SwitchPlanSheet plan={switching} onClose={() => setSwitching(null)} />
+      <RestartSplitSheet open={restarting} onClose={() => setRestarting(false)} todayDone={todayDone} />
 
       <ConfirmSheet
         open={confirm !== null}

@@ -1,15 +1,16 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Icon } from './Icon'
 import { FollowPill } from './plans'
 import { Badge, Button, Field, Segmented, Sheet } from './ui'
 import { useToast } from '../contexts/ToastContext'
+import { useSettings } from '../contexts/SettingsContext'
 import { usePlanSync } from '../contexts/PlanSyncContext'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { usePlans } from '../hooks/usePlans'
 import { usePublicPlanActions } from '../hooks/usePublicPlans'
 import { addDays, dayKey, fmtDuration, parseDayKey } from '../lib/date'
-import { daySummary, exerciseTargetLabel, planSummary, setCountOf } from '../lib/plans'
-import { avgSessionMinutes, matchesDeletePhrase, DELETE_PHRASE, startDateFor } from '../lib/planUiLogic'
+import { daySummary, exerciseTargetLabel, planSummary, scheduleFor, scheduleRange, setCountOf, withRestart } from '../lib/plans'
+import { avgSessionMinutes, matchesDeletePhrase, DELETE_PHRASE, startDateFor, whenLabel } from '../lib/planUiLogic'
 import type { DayKey, Plan, PlanDay } from '../types'
 
 const fmtLong = (k: DayKey) =>
@@ -268,6 +269,197 @@ function SwitchInner({ plan, onClose }: { plan: Plan | null; onClose: () => void
 export function SwitchPlanSheet({ plan, onClose }: { plan: Plan | null; onClose: () => void }) {
   // Re-keyed per plan so a reopened sheet always starts from today / day 1.
   return <SwitchInner key={plan?.id ?? 'none'} plan={plan} onClose={onClose} />
+}
+
+/* -------------------------------------------------------------------------- */
+/* Restart sheet                                                               */
+/* -------------------------------------------------------------------------- */
+
+const SECTION_H = 'text-xs font-semibold uppercase tracking-[0.1em] text-[var(--color-fg-muted)]'
+
+function RestartInner({ open, onClose, todayDone }: { open: boolean; onClose: () => void; todayDone: boolean }) {
+  const toast = useToast()
+  const { profile } = useSettings()
+  const { activePlan, activeState, restartPlan, restoreActiveState } = usePlans()
+  const [dayIndex, setDayIndex] = useState(0)
+  const [when, setWhen] = useState<'today' | 'tomorrow'>('today')
+  const [busy, setBusy] = useState(false)
+
+  // Stays mounted so the plan is already loaded when it opens; each open starts fresh.
+  useEffect(() => {
+    if (!open) return
+    setDayIndex(0)
+    setWhen('today')
+  }, [open])
+
+  const restWeekdays = profile.restWeekdays ?? []
+  const days = activePlan?.days ?? []
+  const day = days[dayIndex]
+  const now = new Date()
+  const todayKey = dayKey(now)
+  const tomorrowKey = dayKey(addDays(now, 1))
+  const chosen = todayDone || when === 'tomorrow' ? tomorrowKey : todayKey
+
+  const candidate = activePlan && activeState ? withRestart(activePlan, activeState, chosen, dayIndex, now) : null
+  const preview = activePlan && candidate ? scheduleRange(activePlan, candidate, chosen, 4, now, restWeekdays) : []
+  const current = activePlan && activeState ? scheduleFor(activePlan, activeState, chosen, now) : null
+  const scheduledToday = activePlan && activeState ? scheduleFor(activePlan, activeState, todayKey, now) : null
+  const unchanged = !!current && current.dayIndex === dayIndex && !current.adjusted
+  const first = preview[0]
+  const weekdayNote =
+    !!first &&
+    !!day &&
+    day.kind === 'workout' &&
+    !first.adjusted &&
+    restWeekdays.includes((parseDayKey(first.date).getDay() + 6) % 7)
+
+  const dayName = day ? (day.kind === 'rest' ? 'rest day' : day.name) : ''
+  const slotName = (p: (typeof preview)[number]) => (p.isRest ? 'Rest' : (p.day?.name ?? ''))
+  const summary = unchanged
+    ? `${whenLabel(chosen, now)} is already ${day?.kind === 'rest' ? 'a rest day' : day?.name}, so there's nothing to change.`
+    : first
+      ? `${whenLabel(first.date, now)}: ${slotName(first)}, then ${preview.slice(1, 3).map(slotName).join(', ')}`
+      : ''
+
+  async function restart() {
+    if (!day) return
+    setBusy(true)
+    try {
+      const prev = await restartPlan(dayIndex, chosen)
+      toast(`Restarted from ${dayName}.`, 'success', {
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            restoreActiveState(prev).catch(() => toast('Could not undo. Try again.', 'error'))
+          },
+        },
+      })
+      onClose()
+    } catch {
+      toast('Could not restart the split. Try again.', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function onRadioKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const k = e.key
+    if (!['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft', 'Home', 'End'].includes(k)) return
+    e.preventDefault()
+    const group = e.currentTarget
+    const n = days.length
+    const next =
+      k === 'Home' ? 0 : k === 'End' ? n - 1 : (dayIndex + (k === 'ArrowDown' || k === 'ArrowRight' ? 1 : -1) + n) % n
+    setDayIndex(next)
+    requestAnimationFrame(() => {
+      group.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus()
+    })
+  }
+
+  return (
+    <Sheet
+      open={open}
+      onClose={busy ? () => undefined : onClose}
+      title="Restart your split"
+      footer={
+        <div className="flex flex-col gap-2">
+          <div aria-live="polite" className="flex flex-col gap-0.5">
+            <p className="line-clamp-2 text-sm font-semibold">{summary}</p>
+            {weekdayNote && !unchanged ? (
+              <p className="text-xs text-[var(--color-fg-muted)]">
+                {parseDayKey(first.date).toLocaleDateString(undefined, { weekday: 'long' })} is an always-rest day, so the
+                rotation counts past {day?.name}.
+              </p>
+            ) : null}
+          </div>
+          <Button
+            full
+            variant="go"
+            size="lg"
+            loading={busy}
+            disabled={!day || unchanged}
+            onClick={() => void restart()}
+            className="min-w-0"
+          >
+            <Icon name="rotate" size={20} className="shrink-0" />
+            <span className="truncate">Restart from {dayName || 'a day'}</span>
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <section className="flex flex-col gap-2" aria-label="Begins">
+          <h3 className={SECTION_H}>Begins</h3>
+          {todayDone ? (
+            <p className="text-sm text-[var(--color-fg-muted)]">You've trained today, so this starts tomorrow.</p>
+          ) : (
+            <Segmented
+              label="Begins"
+              value={when}
+              onChange={setWhen}
+              options={[
+                { value: 'today', label: 'Today' },
+                { value: 'tomorrow', label: 'Tomorrow' },
+              ]}
+            />
+          )}
+        </section>
+
+        <section className="flex flex-col gap-2" aria-label="Start from">
+          <h3 className={SECTION_H}>Start from</h3>
+          <div role="radiogroup" aria-label="Start from" onKeyDown={onRadioKey} className="flex flex-col gap-1.5">
+            {days.map((d, i) => {
+              const on = i === dayIndex
+              const sub = d.kind === 'rest' ? '' : d.focus || daySummary(d.exercises)
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  tabIndex={on ? 0 : -1}
+                  onClick={() => setDayIndex(i)}
+                  className={`flex min-h-12 w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors duration-200 ${
+                    on
+                      ? 'border-brand-500 bg-brand-500/15'
+                      : 'border-[var(--color-line)] bg-[var(--color-surface-2)] hover:border-brand-500/60'
+                  }`}
+                >
+                  <span className={`tabular w-5 shrink-0 font-display text-lg font-bold ${on ? 'text-brand-400' : 'text-[var(--color-fg-muted)]'}`}>
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-semibold">{d.kind === 'rest' ? 'Rest day' : d.name}</span>
+                    {sub ? <span className="tabular block truncate text-xs text-[var(--color-fg-muted)]">{sub}</span> : null}
+                  </span>
+                  {scheduledToday?.dayIndex === i ? (
+                    <span className="shrink-0 rounded-full bg-[var(--color-surface)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-fg-muted)]">
+                      Today
+                    </span>
+                  ) : null}
+                  <span
+                    aria-hidden
+                    className={`grid size-5 shrink-0 place-items-center rounded-full border ${
+                      on ? 'border-brand-500 bg-brand-500 text-ink-950' : 'border-[var(--color-line)]'
+                    }`}
+                  >
+                    {on ? <Icon name="check" size={12} /> : null}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        <p className="text-sm text-[var(--color-fg-muted)]">Your past workouts and streak stay as they are.</p>
+      </div>
+    </Sheet>
+  )
+}
+
+/** "Wrong day?": restart the rotation from any day, today or tomorrow. History is untouched. */
+export function RestartSplitSheet({ open, onClose, todayDone }: { open: boolean; onClose: () => void; todayDone: boolean }) {
+  return <RestartInner open={open} onClose={onClose} todayDone={todayDone} />
 }
 
 /* -------------------------------------------------------------------------- */

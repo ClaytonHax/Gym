@@ -4,7 +4,7 @@ import { db } from '../lib/firebase'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { dayKey, parseDayKey } from '../lib/date'
-import { cloneDays, isPlannedRest, scheduleFor, scheduleRange, withAdjustment } from '../lib/plans'
+import { cloneDays, isPlannedRest, scheduleFor, scheduleRange, withAdjustment, withRestart } from '../lib/plans'
 import type { ActivePlanState, DayKey, Plan, ScheduleSlot } from '../types'
 
 export interface UsePlans {
@@ -30,6 +30,9 @@ export interface UsePlans {
   deactivatePlan: () => Promise<void>
   delayToday: () => Promise<void>
   skipToday: () => Promise<void>
+  /** Restarts the rotation at `dayIndex` on `date`; resolves with the prior state for undo. */
+  restartPlan: (dayIndex: number, date: DayKey) => Promise<ActivePlanState>
+  restoreActiveState: (prev: ActivePlanState) => Promise<void>
 }
 
 /** Firestore rejects undefined fields; JSON round-trip drops them (all data here is plain JSON). */
@@ -77,7 +80,12 @@ export function usePlans(): UsePlans {
       const data = snap.data() as Partial<ActivePlanState> | undefined
       setActiveState(
         data?.planId && data.startDate
-          ? { planId: data.planId, startDate: data.startDate, adjustments: data.adjustments ?? [] }
+          ? {
+              planId: data.planId,
+              startDate: data.startDate,
+              adjustments: data.adjustments ?? [],
+              ...(data.restarts?.length ? { restarts: data.restarts } : {}),
+            }
           : null
       )
       setStateLoaded(true)
@@ -218,6 +226,25 @@ export function usePlans(): UsePlans {
   const delayToday = useCallback(() => adjustToday('delay'), [adjustToday])
   const skipToday = useCallback(() => adjustToday('skip'), [adjustToday])
 
+  const restartPlan = useCallback(
+    async (dayIndex: number, date: DayKey) => {
+      const u = requireUser()
+      if (!activeState || !activePlan) throw new Error('No active plan')
+      const next = withRestart(activePlan, activeState, date, dayIndex)
+      await setDoc(doc(db, 'users', u.uid, 'state', 'activePlan'), clean(next))
+      return activeState
+    },
+    [requireUser, activeState, activePlan]
+  )
+
+  const restoreActiveState = useCallback(
+    async (prev: ActivePlanState) => {
+      const u = requireUser()
+      await setDoc(doc(db, 'users', u.uid, 'state', 'activePlan'), clean(prev))
+    },
+    [requireUser]
+  )
+
   return {
     plans,
     loading: !!user && !(plansLoaded && stateLoaded),
@@ -235,5 +262,7 @@ export function usePlans(): UsePlans {
     deactivatePlan,
     delayToday,
     skipToday,
+    restartPlan,
+    restoreActiveState,
   }
 }

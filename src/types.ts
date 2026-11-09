@@ -255,6 +255,15 @@ export interface ActivePlanState {
   /** Date of cycle day 1. */
   startDate: DayKey
   adjustments: ScheduleAdjustment[]
+  /** Dated anchors from "restart your split", ascending by date. Absent on older docs. */
+  restarts?: ScheduleRestart[]
+}
+
+/** The rotation is at `dayIndex` on `date`, in round `cycle`. */
+export interface ScheduleRestart {
+  date: DayKey
+  dayIndex: number
+  cycle: number
 }
 
 /** What the plan says about one calendar date. */

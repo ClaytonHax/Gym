@@ -6,6 +6,7 @@ import type {
   PlanDay,
   PlanExercise,
   PlanTemplate,
+  ScheduleRestart,
   ScheduleSlot,
 } from '../types'
 import { planToExercises } from '../data/programs'
@@ -51,6 +52,13 @@ function daysBetween(a: DayKey, b: DayKey): number {
   return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86_400_000)
 }
 
+/** The latest restart anchored on or before `key`, if any. */
+function latestRestart(state: ActivePlanState, key: DayKey): ScheduleRestart | undefined {
+  let found: ScheduleRestart | undefined
+  for (const r of state.restarts ?? []) if (r.date <= key && (!found || r.date >= found.date)) found = r
+  return found
+}
+
 /**
  * What the plan says for `date`.
  * offset = days since start minus earlier 'delay's (each pushes the cycle back a day);
@@ -72,10 +80,19 @@ export function scheduleFor(
   if (elapsed < 0 || n === 0) {
     return { ...base, dayIndex: null, day: null, cycle: 0, dayNumber: 0, isRest: false }
   }
-  const delays = state.adjustments.filter((a) => a.type === 'delay' && a.date < key).length
-  const offset = elapsed - delays
+  const r = latestRestart(state, key)
+  let offset: number
+  let cycle: number
+  if (r) {
+    const delays = state.adjustments.filter((a) => a.type === 'delay' && a.date < key && a.date >= r.date).length
+    offset = r.dayIndex + daysBetween(r.date, key) - delays
+    cycle = Math.max(1, r.cycle + Math.floor(offset / n))
+  } else {
+    const delays = state.adjustments.filter((a) => a.type === 'delay' && a.date < key).length
+    offset = elapsed - delays
+    cycle = Math.max(1, Math.floor(offset / n) + 1)
+  }
   const dayIndex = ((offset % n) + n) % n
-  const cycle = Math.max(1, Math.floor(offset / n) + 1)
   const day = plan.days[dayIndex]
   const adj = state.adjustments.find((a) => a.date === key)
   return {
@@ -118,6 +135,32 @@ export function withAdjustment(
     adjustments: [...state.adjustments.filter((a) => a.date !== date), { date, type }].sort((a, b) =>
       a.date.localeCompare(b.date)
     ),
+  }
+}
+
+/**
+ * Restarts the rotation at `dayIndex` on `date` without touching startDate, so earlier
+ * dates keep their schedule. Drops restarts from `date` on and adjustments on or after it.
+ */
+export function withRestart(
+  plan: Plan,
+  state: ActivePlanState,
+  date: DayKey,
+  dayIndex: number,
+  now: Date = new Date()
+): ActivePlanState {
+  const n = plan.days.length
+  const idx = n === 0 ? 0 : Math.min(Math.max(0, Math.floor(dayIndex)), n - 1)
+  const cycle = Math.max(1, scheduleFor(plan, state, date, now).cycle)
+  const restarts = [...(state.restarts ?? []).filter((r) => r.date < date), { date, dayIndex: idx, cycle }].sort(
+    (a, b) => a.date.localeCompare(b.date)
+  )
+  return {
+    ...state,
+    // A plan that hadn't begun yet begins here; there's no history before it to protect.
+    startDate: date < state.startDate ? date : state.startDate,
+    restarts,
+    adjustments: state.adjustments.filter((a) => a.date < date),
   }
 }
 

@@ -27,6 +27,7 @@ import { useActiveWorkout } from '../hooks/useActiveWorkout'
 import { MUSCLE_COLORS } from '../data/exercises'
 import { usePlans } from '../hooks/usePlans'
 import { StarterPlans } from '../components/plans'
+import { RestartSplitSheet } from '../components/planUi'
 import { HomeInstallBanner } from '../components/InstallPrompt'
 import { daySummary, startPlanDay } from '../lib/plans'
 import { nextWorkoutLabel, nextWorkoutSlot } from '../lib/planUiLogic'
@@ -260,6 +261,7 @@ export function Dashboard() {
   const { activePlan, activeState, today, upcoming, isRestDay, loading: plansLoading, delayToday, skipToday } =
     usePlans()
   const [confirm, setConfirm] = useState<'delay' | 'skip' | null>(null)
+  const [restarting, setRestarting] = useState(false)
 
   const unit = profile.unit
   const firstName = (profile.displayName || user?.displayName || '').split(' ')[0]
@@ -391,6 +393,9 @@ export function Dashboard() {
                 ? `Next workout - ${nextWorkoutLabel(nextWorkout)}. Come back then.`
                 : 'Nice work. Recover well.'}
             </p>
+            <Button variant="ghost" size="sm" onClick={() => setRestarting(true)} className="-ml-3 mt-1 text-[var(--color-fg-muted)]">
+              Wrong day? Restart from a day
+            </Button>
           </>
         ) : today.isRest || !today.day ? (
           <>
@@ -409,6 +414,9 @@ export function Dashboard() {
             </p>
             <Button variant="secondary" size="lg" full onClick={() => navigate('/workout')} className="mt-4">
               Train anyway
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setRestarting(true)} className="-ml-3 mt-1 text-[var(--color-fg-muted)]">
+              Wrong day? Restart from a day
             </Button>
           </>
         ) : (
@@ -437,9 +445,14 @@ export function Dashboard() {
             <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
               Move to tomorrow: do this workout tomorrow instead. Skip today: drop it and carry on.
             </p>
+            <Button variant="ghost" size="sm" onClick={() => setRestarting(true)} className="-ml-3 mt-1 text-[var(--color-fg-muted)]">
+              Wrong day? Restart from a day
+            </Button>
           </>
         )}
       </section>
+
+      <RestartSplitSheet open={restarting} onClose={() => setRestarting(false)} todayDone={todayDone} />
 
       <ConfirmSheet
         open={confirm !== null}
